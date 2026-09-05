@@ -1,0 +1,44 @@
+version: 0.1
+
+goal:
+  maximize_storage_recovery: true
+  minimize_regret: true
+
+analysis:
+  read_only: true
+  synthetic_test_data_only: true
+
+duplicate_detection:
+  exact_filename_and_size: strong
+  same_thread_original_forward: strong
+  self_sent_copy: strong
+  filename_only: weak
+  subject_only: weak
+
+protected_categories:
+  tax: protected
+  legal: protected
+  financial: protected
+  medical: protected
+  identity: protected
+  employment: protected
+  signed_documents: protected
+
+sentimental_media:
+  default: review
+
+actions:
+  analyze: allowed
+  recommend: allowed
+  mailbox_changes: require_explicit_current_user_approval
+
+recommendation_tiers:
+  - safe
+  - review
+  - aggressive
+  - keep
+
+scoring:
+  model: explainable
+  conceptual_formula: "space_saved * confidence / risk"
+  require_reason: true

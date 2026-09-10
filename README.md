@@ -43,6 +43,49 @@ The structured `Inventory` result contains ordered messages, scope, audit time, 
 
 Only synthetic data is supported by the demo. This boundary does not certify a live connector's completeness, privacy, or behavior; live access is outside GSA-002.
 
+## Run a targeted read-only Gmail inventory (GSA-008)
+
+The optional Gmail connector uses the same inventory pipeline. It requests exactly this OAuth scope:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+```
+
+The connector rejects credentials that lack that scope or contain another Gmail scope. Its only Gmail operations are `users.messages.list` and `users.messages.get`; it has no mailbox-mutation method. It requests metadata fields for IDs, thread IDs, labels, internal dates, whole-message size estimates, and available MIME attachment filename/size facts. It does not request raw messages, bodies, snippets, address headers, or attachment data.
+
+### Local setup
+
+1. Create or select a Google Cloud project, enable the Gmail API, configure the OAuth consent screen, and add your Google account as a test user if the app remains in testing.
+2. Create an OAuth client ID with application type **Desktop app**, then download its client JSON.
+3. Create a directory outside this repository for the client JSON and token. For example, in PowerShell:
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\gmail-storage-auditor" | Out-Null
+   Move-Item -LiteralPath "C:\path\to\downloaded-client.json" -Destination "$env:LOCALAPPDATA\gmail-storage-auditor\client.json"
+   ```
+
+4. Install the bounded Gmail dependencies in your preferred virtual environment:
+
+   ```text
+   python -m pip install -r requirements-gmail.txt
+   ```
+
+5. Run an explicit, bounded query. The token path may not exist on the first run, but its parent directory must exist:
+
+   ```powershell
+   python -B -m gmail_storage_auditor.gmail_cli --query "larger:10M" --max-pages 2 --client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\client.json" --token "$env:LOCALAPPDATA\gmail-storage-auditor\token.json"
+   ```
+
+   The first run opens Google's local installed-app authorization flow. Review the consent screen and approve only read-only Gmail access. The resulting token remains outside the repository. Later runs load or refresh that token and recheck its Gmail scopes.
+
+The query is always required, and `--max-pages` must be positive. A finished run means only that the requested Gmail query finished; it never claims whole-mailbox coverage. Provider failures produce a partial report using successfully observed pages. Gmail IDs and page tokens are mapped to temporary run-local references before entering the inventory report.
+
+Attachment enumeration remains marked incomplete because Gmail's metadata response does not guarantee a complete MIME body tree. Direction is shown as `sent` only when Gmail supplies the `SENT` label; received and self-sent status remain unknown because this connector does not request address headers. The output can contain real attachment filenames and dates and is intended for private local review. Do not paste it into issues, logs, tests, or repository files.
+
+To revoke access, remove the app under your Google Account's third-party connections and delete the external token file. Never copy either credential file into this repository; common client/token JSON names are ignored, and the command refuses credential paths inside the checkout.
+
+The connector still produces factual observed-storage inventory only. It does not detect duplicates, classify risk, score messages, recommend cleanup, or change the mailbox.
+
 ## Core principles
 
 - Analyze first; never delete during analysis.
@@ -74,6 +117,7 @@ The exact scoring model is configurable and should remain explainable.
 - `config/policy.yaml` — default safety and scoring policy
 - `docs/architecture.md` — system design
 - `gmail_storage_auditor/` — normalized read-only inventory, synthetic source, and text report
+- `requirements-gmail.txt` — optional bounded dependencies for the read-only Gmail connector
 - `tests/` — synthetic inventory and boundary tests
 - `docs/safety.md` — planned safety gates and approval model documentation
 - `docs/agent-board.md` — planned board/workflow documentation

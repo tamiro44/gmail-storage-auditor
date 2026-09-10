@@ -84,7 +84,33 @@ Attachment enumeration remains marked incomplete because Gmail's metadata respon
 
 To revoke access, remove the app under your Google Account's third-party connections and delete the external token file. Never copy either credential file into this repository; common client/token JSON names are ignored, and the command refuses credential paths inside the checkout.
 
-The connector still produces factual observed-storage inventory only. It does not detect duplicates, classify risk, score messages, recommend cleanup, or change the mailbox.
+By default the connector command produces factual observed-storage inventory only. The optional GSA-003 analysis below consumes that same inventory; the connector's requests and normalization are unchanged.
+
+## Duplicate metadata analysis (GSA-003)
+
+Run the fabricated original/forward/sent/self-sent example without dependencies or network access:
+
+```text
+python -B -m gmail_storage_auditor.duplicate_demo
+```
+
+For private local Gmail analysis, append `--duplicates` to the existing bounded `gmail_cli` command. It appends a report after collecting the same inventory, without additional Gmail requests. No delete, trash, archive, label, read-state, or other mailbox mutation exists in this analysis. Real report output must stay outside repository artifacts and logs.
+
+The Python entry points are `analyze_duplicates(inventory)` in `gmail_storage_auditor.duplicates` and `render_duplicates(analysis)` in `gmail_storage_auditor.duplicate_report`. Results are immutable records retaining the original inventory and its coverage status.
+
+- Each cluster contains at least two distinct message references sharing an exact, case-sensitive filename and known exact attachment byte size. Zero bytes is valid; missing fields, near sizes, and similar names do not match. Repeated occurrences within one message count once. Overlapping attachment groups remain separate, avoiding transitive whole-message equivalence.
+- `strong_metadata_match` is qualitative confidence in the metadata signal, following the existing policy. It is not a calibrated percentage or content-identity proof. No confidence mapping or policy defaults are changed.
+- Exact `original` and `forwarded` hint values with source provenance support an original/forward relationship only within the same known thread and matched attachment group. Normalized `sent` and `self_sent` directions identify copy patterns but do not prove redundancy or authority. Unknown or unrelated hints do not establish relationships.
+- One uncontradicted original with a same-thread forward is the proposed authoritative retained copy (`source_supported`). Multiple originals, contradictory hints, or absent supporting evidence leave authority `unresolved`; the smallest reference is a stable retention fallback for review, not an assertion of authorship. Dates and sent status alone never prove authority. Every cluster preserves a proposed retained member, and `retained_refs` contains their union across overlapping clusters.
+- Gmail currently supplies no original/forward hints or self-sent direction, and marks attachment enumeration incomplete. Those facts remain unknown; this issue adds no headers, bodies, attachment downloads, scopes, or connector inference. Relationships are exercised with synthetic supplied observations.
+
+Matched attachments do not establish whole-message redundancy: bodies, other attachments, and context may be unique. Reports show incomplete enumeration and partial scan limitations, propose no removal, and calculate no risk tiers, scores, or savings. Protection/scoring and approval work remain separate issues. An empty cluster list does not prove the observed messages are unique.
+
+Run the full regression suite (inventory, connector, and duplicate analysis):
+
+```text
+python -B -m unittest discover -s tests -v
+```
 
 ## Core principles
 
@@ -124,4 +150,4 @@ The exact scoring model is configurable and should remain explainable.
 
 ## Status
 
-GSA-002 implements a synthetic, report-only storage inventory. The broader audit workflow above remains planned; implementation tasks are tracked as GitHub Issues.
+GSA-002 implements normalized storage inventory; GSA-008 adds the read-only Gmail connector; GSA-003 adds optional deterministic duplicate metadata analysis and retained-copy proposals. The broader protection, scoring, recommendation, and approval workflow remains planned and tracked as GitHub Issues.

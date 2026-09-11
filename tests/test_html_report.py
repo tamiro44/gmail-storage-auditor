@@ -71,9 +71,21 @@ class HtmlReportTests(unittest.TestCase):
     def test_unknown_total_and_no_matches_are_not_zero_or_uniqueness_claims(self):
         inventory = replace(examples()["empty"], messages=(Message("unknown"),))
         report = render_html(analyze_duplicates(inventory))
-        self.assertIn("<dt>Known whole-message estimated bytes</dt><dd>unknown</dd>", report)
+        self.assertIn('<span>Known observed bytes</span><strong>unknown</strong>', report)
         self.assertIn("does not prove uniqueness", report)
         self.assertIn("Attachment enumeration is incomplete or unknown", report)
+
+    def test_summary_cards_and_authority_states_are_presentational_only(self):
+        report = render_html(examples()["duplicates"])
+        self.assertEqual(report.count('<div class="card">'), 4)
+        self.assertIn('<article class="authority source-supported">', report)
+        self.assertIn('<span class="status">source_supported</span>', report)
+
+        unresolved = examples()["duplicates"]
+        cluster = replace(unresolved.clusters[0], authority="unresolved")
+        report = render_html(replace(unresolved, clusters=(cluster,)))
+        self.assertIn('<article class="authority unresolved">', report)
+        self.assertIn('<span class="status">unresolved</span>', report)
 
 
 class HtmlCliTests(unittest.TestCase):

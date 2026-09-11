@@ -7,29 +7,36 @@
 <title>Gmail Storage Auditor report</title>
 <style>
 body{font-family:system-ui,sans-serif;line-height:1.5;color:#172b3a;background:#f4f6f8;margin:0}
-main{max-width:1200px;margin:auto;padding:2rem}h1,h2,h3{line-height:1.2}
+main{max-width:1200px;margin:auto;padding:2rem}h1,h2,h3{line-height:1.2}.context{color:#465b6b;margin-top:-.5rem}
 section,article{background:white;border:1px solid #cbd5df;border-radius:.5rem;padding:1rem;margin:1rem 0}
-.notice{border-left:5px solid #956000}dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}
+.notice{border-left:5px solid #956000}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.75rem}
+.card{background:#edf2f7;border-radius:.4rem;padding:1rem}.card span{display:block;color:#465b6b}.card strong{display:block;font-size:1.35rem;margin-top:.25rem}
+.authority{border-left-width:6px}.source-supported{border-left-color:#177245}.unresolved{border-left-color:#b36b00}
+.status{display:inline-block;border-radius:999px;padding:.15rem .55rem;font-weight:bold}.source-supported .status{background:#d9f2e4;color:#105b37}.unresolved .status{background:#fff0d5;color:#754600}
+dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}
 dt{font-weight:bold}dd{margin:0}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}
 th,td{text-align:left;vertical-align:top;border-bottom:1px solid #cbd5df;padding:.6rem;overflow-wrap:anywhere}
 th{background:#edf2f7}li,dd,p{overflow-wrap:anywhere}td ul{margin:0;padding-left:1rem}
 @media print{body{background:white}main{padding:0;max-width:none}.table-scroll{overflow:visible}section,article{break-inside:avoid}}
+@media(max-width:650px){main{padding:1rem}dl{grid-template-columns:1fr}dd{margin-bottom:.5rem}}
 </style>
 </head>
 <body>
 <main>
-<h1>Gmail Storage Auditor</h1>
+<h1>Gmail Storage Auditor report</h1>
+<p class="context"><strong>Scan scope:</strong> Synthetic &lt;selected&gt; · <strong>Report as of:</strong> 2026-09-07T00:00:00+00:00</p>
 <section class="notice" aria-label="Analysis-only safety notice">
 <h2>Analysis only</h2>
-<p>This report does not delete, trash, archive, change labels or read state, or make any other Gmail mutation. It grants no approval for mailbox changes.</p>
+<p>This report does not delete, trash, archive, change labels or read state, or make any other Gmail mutation. No deletion or removal is authorized by this report.</p>
 <p>No removal recommendations, risk tiers, scores, or savings estimates are produced. Retained copies are proposals for review, not proof that a whole message is redundant.</p>
 <p>Private local report: filenames, dates, and supplied observations may be sensitive. Keep this file out of repositories and shared logs.</p>
 </section>
 <section><h2>Summary</h2>
-<dl><dt>Source</dt><dd>synthetic</dd><dt>Scope</dt><dd>Synthetic &lt;selected&gt;</dd><dt>Coverage</dt><dd>targeted scope only</dd><dt>As of (UTC)</dt><dd>2026-09-07T00:00:00+00:00</dd><dt>Scan</dt><dd>partial</dd><dt>Pages read</dt><dd>1</dd><dt>Unique observed messages</dt><dd>3</dd><dt>Known whole-message estimated bytes</dt><dd>100</dd><dt>Messages with unknown size</dt><dd>2</dd><dt>Duplicate metadata clusters</dt><dd>not analyzed</dd></dl>
+<div class="cards"><div class="card"><span>Unique messages</span><strong>3</strong></div><div class="card"><span>Known observed bytes</span><strong>100</strong></div><div class="card"><span>Unknown-size messages</span><strong>2</strong></div><div class="card"><span>Duplicate clusters</span><strong>not analyzed</strong></div></div>
+<dl><dt>Source</dt><dd>synthetic</dd><dt>Scope</dt><dd>Synthetic &lt;selected&gt;</dd><dt>Coverage</dt><dd>targeted scope only</dd><dt>Report as of (UTC)</dt><dd>2026-09-07T00:00:00+00:00</dd><dt>Scan</dt><dd>partial</dd><dt>Pages read</dt><dd>1</dd></dl>
 </section>
 <section class="notice"><h2>Limitations and warnings</h2>
-<ul><li>Storage estimates apply only to observed records; they do not measure account quota or recoverable space.</li><li>Attachment bytes are not added to whole-message totals. Unknown sizes remain unknown.</li><li>Completion of a targeted scope does not imply whole-mailbox coverage.</li><li>Metadata equality does not prove identical attachment content or whole-message redundancy.</li><li>Partial inventory: page limit reached; only successfully observed records are included.</li><li>Attachment enumeration is incomplete or unknown for one or more messages.</li></ul>
+<ul><li>Reported bytes are observed estimates; they do not measure account quota and are not guaranteed recoverable storage.</li><li>Attachment bytes are not added to whole-message totals. Unknown sizes remain unknown.</li><li>Completion of a targeted scope does not imply whole-mailbox coverage.</li><li>Metadata equality does not prove identical attachment content or whole-message redundancy.</li><li>Partial inventory: page limit reached; only successfully observed records are included.</li><li>Attachment enumeration is incomplete or unknown for one or more messages.</li></ul>
 </section>
 <section><h2>Message inventory</h2>
 <div class="table-scroll"><table>

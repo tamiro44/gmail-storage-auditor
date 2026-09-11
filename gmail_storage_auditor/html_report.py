@@ -20,6 +20,13 @@ def _facts(items) -> str:
     ) + "</dl>"
 
 
+def _cards(items) -> str:
+    return '<div class="cards">' + "".join(
+        f'<div class="card"><span>{_text(label)}</span><strong>{_text(value)}</strong></div>'
+        for label, value in items
+    ) + "</div>"
+
+
 def render_html(result: Inventory | DuplicateAnalysis) -> str:
     """Render supplied results in their existing order, without recomputing analysis."""
     analysis = result if isinstance(result, DuplicateAnalysis) else None
@@ -31,35 +38,43 @@ def render_html(result: Inventory | DuplicateAnalysis) -> str:
         "<title>Gmail Storage Auditor report</title>",
         "<style>",
         "body{font-family:system-ui,sans-serif;line-height:1.5;color:#172b3a;background:#f4f6f8;margin:0}",
-        "main{max-width:1200px;margin:auto;padding:2rem}h1,h2,h3{line-height:1.2}",
+        "main{max-width:1200px;margin:auto;padding:2rem}h1,h2,h3{line-height:1.2}.context{color:#465b6b;margin-top:-.5rem}",
         "section,article{background:white;border:1px solid #cbd5df;border-radius:.5rem;padding:1rem;margin:1rem 0}",
-        ".notice{border-left:5px solid #956000}dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}",
+        ".notice{border-left:5px solid #956000}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.75rem}",
+        ".card{background:#edf2f7;border-radius:.4rem;padding:1rem}.card span{display:block;color:#465b6b}.card strong{display:block;font-size:1.35rem;margin-top:.25rem}",
+        ".authority{border-left-width:6px}.source-supported{border-left-color:#177245}.unresolved{border-left-color:#b36b00}",
+        ".status{display:inline-block;border-radius:999px;padding:.15rem .55rem;font-weight:bold}.source-supported .status{background:#d9f2e4;color:#105b37}.unresolved .status{background:#fff0d5;color:#754600}",
+        "dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}",
         "dt{font-weight:bold}dd{margin:0}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}",
         "th,td{text-align:left;vertical-align:top;border-bottom:1px solid #cbd5df;padding:.6rem;overflow-wrap:anywhere}",
         "th{background:#edf2f7}li,dd,p{overflow-wrap:anywhere}td ul{margin:0;padding-left:1rem}",
         "@media print{body{background:white}main{padding:0;max-width:none}.table-scroll{overflow:visible}section,article{break-inside:avoid}}",
-        "</style>", "</head>", "<body>", "<main>", "<h1>Gmail Storage Auditor</h1>",
+        "@media(max-width:650px){main{padding:1rem}dl{grid-template-columns:1fr}dd{margin-bottom:.5rem}}",
+        "</style>", "</head>", "<body>", "<main>", "<h1>Gmail Storage Auditor report</h1>",
+        f'<p class="context"><strong>Scan scope:</strong> {_text(inventory.scope.label)} · <strong>Report as of:</strong> {_text(inventory.as_of.isoformat())}</p>',
         '<section class="notice" aria-label="Analysis-only safety notice">',
         "<h2>Analysis only</h2>",
-        "<p>This report does not delete, trash, archive, change labels or read state, or make any other Gmail mutation. It grants no approval for mailbox changes.</p>",
+        "<p>This report does not delete, trash, archive, change labels or read state, or make any other Gmail mutation. No deletion or removal is authorized by this report.</p>",
         "<p>No removal recommendations, risk tiers, scores, or savings estimates are produced. Retained copies are proposals for review, not proof that a whole message is redundant.</p>",
         "<p>Private local report: filenames, dates, and supplied observations may be sensitive. Keep this file out of repositories and shared logs.</p>", "</section>",
         "<section><h2>Summary</h2>",
+        _cards((
+            ("Unique messages", inventory.message_count),
+            ("Known observed bytes", inventory.known_estimated_bytes),
+            ("Unknown-size messages", inventory.unknown_size_count),
+            ("Duplicate clusters", len(analysis.clusters) if analysis is not None else "not analyzed"),
+        )),
         _facts((
             ("Source", "synthetic" if inventory.scope.synthetic else "non-synthetic"),
             ("Scope", inventory.scope.label),
             ("Coverage", "whole mailbox requested" if inventory.scope.whole_mailbox else "targeted scope only"),
-            ("As of (UTC)", inventory.as_of.isoformat()),
+            ("Report as of (UTC)", inventory.as_of.isoformat()),
             ("Scan", "complete for requested scope" if inventory.complete else "partial"),
             ("Pages read", inventory.pages_read),
-            ("Unique observed messages", inventory.message_count),
-            ("Known whole-message estimated bytes", inventory.known_estimated_bytes),
-            ("Messages with unknown size", inventory.unknown_size_count),
-            ("Duplicate metadata clusters", len(analysis.clusters) if analysis is not None else "not analyzed"),
         )), "</section>", '<section class="notice"><h2>Limitations and warnings</h2>',
     ]
     warnings = [
-        "Storage estimates apply only to observed records; they do not measure account quota or recoverable space.",
+        "Reported bytes are observed estimates; they do not measure account quota and are not guaranteed recoverable storage.",
         "Attachment bytes are not added to whole-message totals. Unknown sizes remain unknown.",
         "Completion of a targeted scope does not imply whole-mailbox coverage.",
         "Metadata equality does not prove identical attachment content or whole-message redundancy.",
@@ -98,10 +113,12 @@ def render_html(result: Inventory | DuplicateAnalysis) -> str:
         if not analysis.clusters:
             lines.append("<p>No exact attachment metadata matches across observed messages; this does not prove uniqueness.</p>")
         for cluster in analysis.clusters:
-            lines.extend(["<article>", f"<h3>{_text(cluster.filename)}</h3>", _facts((
+            authority_class = "source-supported" if cluster.authority == "source_supported" else "unresolved"
+            lines.extend([f'<article class="authority {authority_class}">', f"<h3>{_text(cluster.filename)}</h3>", _facts((
                 ("Exact attachment bytes", cluster.size_bytes), ("Confidence", cluster.confidence),
-                ("Proposed retained copy", cluster.retained_ref), ("Authority", cluster.authority),
+                ("Proposed retained copy", cluster.retained_ref),
                 ("Retention reason", cluster.retention_reason))),
+                f'<p><strong>Authority:</strong> <span class="status">{_text(cluster.authority)}</span></p>',
                 "<h4>Members</h4>", _list(cluster.members), "<h4>Evidence</h4>", _list(cluster.evidence),
                 "<h4>Limitations</h4>", _list(cluster.limitations), "</article>"])
     lines.extend(["</section>", "</main>", "</body>", "</html>"])

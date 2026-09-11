@@ -64,6 +64,13 @@ jobs:
         shell: bash
         run: npm install --global @openai/codex@0.154.0
 
+      - name: Authenticate Codex with API key
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.codex"
+          printf '%s' "$OPENAI_API_KEY" | codex login --with-api-key
+          codex login status
+
       - name: Build agent task from issue event
         shell: bash
         env:
@@ -110,7 +117,7 @@ jobs:
             --ignore-user-config \
             --ignore-rules \
             --sandbox workspace-write \
-            --model gpt-5.6-sol \
+            --model gpt-5.3-codex \
             -c approval_policy=never \
             -c features.plugins=false \
             "$(cat "$TASK_FILE")" </dev/null

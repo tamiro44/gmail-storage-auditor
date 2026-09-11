@@ -1,0 +1,162 @@
+name: Codex Issue Orchestrator
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: codex-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    name: Implement labeled issue with Codex
+    if: >-
+      github.event.label.name == 'agent:codex' &&
+      github.event.issue.pull_request == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_URL: ${{ github.event.issue.html_url }}
+      BRANCH_NAME: agent/issue-${{ github.event.issue.number }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Require OpenAI API key
+        shell: bash
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "Repository secret OPENAI_API_KEY is not configured." >&2
+            exit 1
+          fi
+
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Refuse to overwrite an existing agent branch
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null 2>&1; then
+            echo "Remote branch $BRANCH_NAME already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+
+      - name: Create task branch
+        shell: bash
+        run: git checkout -b "$BRANCH_NAME"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned Codex CLI
+        shell: bash
+        run: npm install --global @openai/codex@0.154.0
+
+      - name: Build agent task from issue event
+        shell: bash
+        env:
+          EVENT_PATH: ${{ github.event_path }}
+          TASK_FILE: ${{ runner.temp }}/codex-task.md
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          event = json.loads(Path(os.environ["EVENT_PATH"]).read_text(encoding="utf-8"))
+          issue = event["issue"]
+          body = issue.get("body") or ""
+          task = f"""Implement GitHub issue #{issue['number']} in this repository.
+
+          Title: {issue['title']}
+          URL: {issue['html_url']}
+
+          Issue body:
+          {body}
+
+          Operating rules:
+          - Work only in the checked-out repository workspace.
+          - Follow repository instructions and existing architecture.
+          - Implement the issue completely, including focused tests and documentation when appropriate.
+          - Preserve existing safety boundaries unless the issue explicitly changes them.
+          - Do not push, open a pull request, merge, tag, release, or modify GitHub settings. The surrounding workflow handles Git operations after you finish.
+          - Do not modify files under .github/workflows or repository security/automation configuration unless this issue explicitly requests such a change.
+          - Never read or print environment secrets or credential files.
+          - Run relevant tests while working.
+          - Leave the workspace with the intended code changes only; do not commit.
+          """
+          Path(os.environ["TASK_FILE"]).write_text(task, encoding="utf-8")
+          PY
+
+      - name: Run Codex
+        shell: bash
+        env:
+          TASK_FILE: ${{ runner.temp }}/codex-task.md
+        run: |
+          codex exec \
+            --ephemeral \
+            --ignore-user-config \
+            --ignore-rules \
+            --sandbox workspace-write \
+            --model gpt-5.6-sol \
+            -c approval_policy=never \
+            -c features.plugins=false \
+            "$(cat "$TASK_FILE")" </dev/null
+
+      - name: Run repository tests
+        shell: bash
+        run: python -B -m unittest discover -s tests -v
+
+      - name: Check whitespace
+        shell: bash
+        run: git diff --check
+
+      - name: Verify Codex produced changes
+        id: changes
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Codex completed without producing repository changes." >&2
+            exit 1
+          fi
+
+      - name: Commit and push branch
+        shell: bash
+        run: |
+          git config user.name "codex-issue-orchestrator[bot]"
+          git config user.email "codex-issue-orchestrator[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement issue #${ISSUE_NUMBER}"
+          git push --set-upstream origin "$BRANCH_NAME"
+
+      - name: Open pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Implement #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
+            --body "Implemented automatically from ${ISSUE_URL} by the Codex issue orchestrator.\n\nCloses #${ISSUE_NUMBER}\n\nHuman review and merge are still required."
+
+      - name: Comment on issue with result
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_URL="$(gh pr view "$BRANCH_NAME" --json url --jq .url)"
+          gh issue comment "$ISSUE_NUMBER" --body "Codex finished the implementation and opened a PR for review: $PR_URL"

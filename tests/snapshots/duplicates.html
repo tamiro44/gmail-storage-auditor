@@ -13,6 +13,7 @@ section,article{background:white;border:1px solid #cbd5df;border-radius:.5rem;pa
 .card{background:#edf2f7;border-radius:.4rem;padding:1rem}.card span{display:block;color:#465b6b}.card strong{display:block;font-size:1.35rem;margin-top:.25rem}
 .authority{border-left-width:6px}.source-supported{border-left-color:#177245}.unresolved{border-left-color:#b36b00}
 .status{display:inline-block;border-radius:999px;padding:.15rem .55rem;font-weight:bold}.source-supported .status{background:#d9f2e4;color:#105b37}.unresolved .status{background:#fff0d5;color:#754600}
+.review-link{display:inline-block;background:#1a73e8;color:white;border-radius:.3rem;padding:.35rem .65rem;text-decoration:none;font-weight:bold;white-space:nowrap}.review-link:focus,.review-link:hover{background:#1558b0}
 dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}
 dt{font-weight:bold}dd{margin:0}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}
 th,td{text-align:left;vertical-align:top;border-bottom:1px solid #cbd5df;padding:.6rem;overflow-wrap:anywhere}
@@ -41,11 +42,11 @@ th{background:#edf2f7}li,dd,p{overflow-wrap:anywhere}td ul{margin:0;padding-left
 <section><h2>Message inventory</h2>
 <div class="table-scroll"><table>
 <caption>Observed messages in inventory order</caption>
-<thead><tr><th scope="col">Reference</th><th scope="col">Estimated bytes</th><th scope="col">Date (UTC)</th><th scope="col">Age (days)</th><th scope="col">Thread</th><th scope="col">Direction</th><th scope="col">Attachments</th><th scope="col">Supplied observations</th></tr></thead>
+<thead><tr><th scope="col">Reference</th><th scope="col">Review</th><th scope="col">Estimated bytes</th><th scope="col">Date (UTC)</th><th scope="col">Age (days)</th><th scope="col">Thread</th><th scope="col">Direction</th><th scope="col">Attachments</th><th scope="col">Supplied observations</th></tr></thead>
 <tbody>
-<tr><td>original</td><td>100</td><td>2026-09-07T00:00:00+00:00</td><td>0</td><td>thread</td><td>received</td><td><p>1 observed; list complete</p><ul><li>sample &amp; notes.txt (12 bytes)</li></ul></td><td><ul><li>original (source: synthetic fixture)</li></ul></td></tr>
-<tr><td>forward</td><td>unknown</td><td>unknown</td><td>unknown</td><td>thread</td><td>sent</td><td><p>1 observed; list partial</p><ul><li>sample &amp; notes.txt (12 bytes)</li></ul></td><td><ul><li>forwarded (source: synthetic fixture)</li></ul></td></tr>
-<tr><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td><p>0 observed; list unknown</p><ul></ul></td><td>unknown</td></tr>
+<tr><td>original</td><td></td><td>100</td><td>2026-09-07T00:00:00+00:00</td><td>0</td><td>thread</td><td>received</td><td><p>1 observed; list complete</p><ul><li>sample &amp; notes.txt (12 bytes)</li></ul></td><td><ul><li>original (source: synthetic fixture)</li></ul></td></tr>
+<tr><td>forward</td><td></td><td>unknown</td><td>unknown</td><td>unknown</td><td>thread</td><td>sent</td><td><p>1 observed; list partial</p><ul><li>sample &amp; notes.txt (12 bytes)</li></ul></td><td><ul><li>forwarded (source: synthetic fixture)</li></ul></td></tr>
+<tr><td>unknown</td><td></td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td><p>0 observed; list unknown</p><ul></ul></td><td>unknown</td></tr>
 </tbody></table></div>
 </section>
 <section><h2>Duplicate clusters</h2>

@@ -18,6 +18,8 @@ from .gmail import (
 )
 from .inventory import InventoryError, Scope, collect_inventory
 from .report import render_inventory
+from .duplicates import analyze_duplicates
+from .duplicate_report import render_duplicates
 
 
 def _outside_repository(path_text: str, *, must_exist: bool) -> Path:
@@ -101,6 +103,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-pages", required=True, type=int, help="Positive finite Gmail page limit")
     parser.add_argument("--client-secrets", required=True, help="OAuth desktop-client JSON outside this repository")
     parser.add_argument("--token", required=True, help="OAuth token JSON outside this repository")
+    parser.add_argument("--duplicates", action="store_true", help="Append analysis-only duplicate metadata report")
     return parser
 
 
@@ -124,7 +127,8 @@ def main(argv: list[str] | None = None) -> int:
             as_of=datetime.now(timezone.utc),
             max_pages=args.max_pages,
         )
-        print(render_inventory(inventory), end="")
+        report = render_duplicates(analyze_duplicates(inventory)) if args.duplicates else render_inventory(inventory)
+        print(report, end="")
         return 0
     except (GmailConnectorError, InventoryError) as error:
         print(f"Gmail inventory failed: {error}", file=sys.stderr)

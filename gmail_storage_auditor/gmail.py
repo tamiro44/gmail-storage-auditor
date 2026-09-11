@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timezone
+import re
+from types import MappingProxyType
 from typing import Any
 
 from .inventory import Attachment, InventoryError, Message, Page, Scope
@@ -11,6 +13,7 @@ from .inventory import Attachment, InventoryError, Message, Page, Scope
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GMAIL_SCOPES = (GMAIL_READONLY_SCOPE,)
+GMAIL_REVIEW_URL_PREFIX = "https://mail.google.com/mail/#all/"
 
 # List returns provider identifiers only. Get deliberately excludes snippets,
 # headers, raw messages, and MIME body data.
@@ -78,9 +81,15 @@ class GmailReader:
         self._list_messages = list_messages
         self._get_message = get_message
         self._message_refs: dict[str, str] = {}
+        self._review_urls: dict[str, str] = {}
         self._thread_refs: dict[str, str] = {}
         self._page_tokens: dict[str, str] = {}
         self._page_refs: dict[str, str] = {}
+
+    @property
+    def review_urls(self) -> Mapping[str, str]:
+        """Opaque-reference review links for messages already read this run."""
+        return MappingProxyType(dict(self._review_urls))
 
     def read_page(self, scope: Scope, cursor: str | None) -> Page:
         if not isinstance(scope, Scope) or scope.synthetic or scope.whole_mailbox:
@@ -161,8 +170,12 @@ class GmailReader:
         date = _internal_date(response.get("internalDate"))
         direction = _direction(response.get("labelIds"))
         attachments, completeness = _attachments(response.get("payload"))
+        message_ref = self._opaque_ref(self._message_refs, message_id, "message")
+        review_url = _gmail_review_url(message_id)
+        if review_url is not None:
+            self._review_urls[message_ref] = review_url
         return Message(
-            ref=self._opaque_ref(self._message_refs, message_id, "message"),
+            ref=message_ref,
             thread_ref=(
                 self._opaque_ref(self._thread_refs, thread_id, "thread")
                 if thread_id is not None
@@ -190,6 +203,13 @@ def _nonnegative_integer(value: Any, field: str) -> int | None:
     if isinstance(value, str) and value.isascii() and value.isdigit():
         return int(value)
     raise InventoryError(f"Invalid Gmail {field}.")
+
+
+def _gmail_review_url(message_id: str) -> str | None:
+    """Build a non-API Gmail web route only for a narrow, inert ID shape."""
+    if re.fullmatch(r"[0-9a-f]{8,64}", message_id, flags=re.ASCII | re.IGNORECASE) is None:
+        return None
+    return GMAIL_REVIEW_URL_PREFIX + message_id
 
 
 def _internal_date(value: Any) -> datetime | None:

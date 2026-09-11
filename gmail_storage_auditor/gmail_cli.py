@@ -144,7 +144,10 @@ def main(argv: list[str] | None = None) -> int:
         report = render_duplicates(analysis) if analysis is not None else render_inventory(inventory)
         print(report, end="")
         if html_path is not None:
-            html = render_html(analysis if analysis is not None else inventory)
+            html = render_html(
+                analysis if analysis is not None else inventory,
+                review_urls=getattr(reader, "review_urls", None),
+            )
             try:
                 with html_path.open("x", encoding="utf-8", newline="\n") as output:
                     output.write(html)

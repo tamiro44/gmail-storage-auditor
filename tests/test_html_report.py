@@ -13,8 +13,9 @@ from unittest.mock import patch
 from gmail_storage_auditor import gmail_cli
 from gmail_storage_auditor.demo import AS_OF
 from gmail_storage_auditor.duplicates import analyze_duplicates
+from gmail_storage_auditor.gmail import GMAIL_SCOPES, GmailReader
 from gmail_storage_auditor.html_report import render_html
-from gmail_storage_auditor.inventory import Attachment, Hint, Inventory, Message, Scope
+from gmail_storage_auditor.inventory import Attachment, Hint, Inventory, Message, Scope, collect_inventory
 
 
 def examples():
@@ -36,10 +37,14 @@ class Elements(HTMLParser):
         super().__init__()
         self.tags = []
         self.attributes = []
+        self.data = []
 
     def handle_starttag(self, tag, attrs):
         self.tags.append(tag)
         self.attributes.extend(attrs)
+
+    def handle_data(self, data):
+        self.data.append(data)
 
 
 class HtmlReportTests(unittest.TestCase):
@@ -86,6 +91,56 @@ class HtmlReportTests(unittest.TestCase):
         report = render_html(replace(unresolved, clusters=(cluster,)))
         self.assertIn('<article class="authority unresolved">', report)
         self.assertIn('<span class="status">unresolved</span>', report)
+
+    def test_valid_review_link_keeps_opaque_reference_visible_without_new_reads(self):
+        provider_id = "18abcdef01234567"
+        calls = []
+
+        def list_messages(**request):
+            calls.append(("list", request))
+            return {"messages": [{"id": provider_id, "threadId": "18abcdef01234568"}]}
+
+        def get_message(**request):
+            calls.append(("get", request))
+            return {"id": provider_id, "threadId": "18abcdef01234568", "payload": {}}
+
+        reader = GmailReader(query="larger:1M", list_messages=list_messages,
+                             get_message=get_message, granted_scopes=GMAIL_SCOPES)
+        inventory = collect_inventory(reader, Scope("Gmail query: larger:1M"),
+                                      as_of=AS_OF, max_pages=1)
+        calls_after_collection = tuple(calls)
+        report = render_html(inventory, review_urls=reader.review_urls)
+        self.assertEqual(tuple(calls), calls_after_collection)
+
+        parsed = Elements()
+        parsed.feed(report)
+        self.assertIn("message-000001", parsed.data)
+        self.assertIn("Open in Gmail", parsed.data)
+        self.assertNotIn(provider_id, "".join(parsed.data))
+        self.assertIn(("href", f"https://mail.google.com/mail/#all/{provider_id}"), parsed.attributes)
+        self.assertIn(("target", "_blank"), parsed.attributes)
+        self.assertIn(("rel", "noopener noreferrer"), parsed.attributes)
+
+    def test_absent_or_unsafe_review_urls_are_omitted_and_attributes_are_escaped(self):
+        inventory = examples()["partial_inventory"]
+        self.assertNotIn("Open in Gmail", render_html(inventory))
+
+        valid = "https://mail.google.com/mail/#all/18abcdef01234567"
+        with patch("gmail_storage_auditor.html_report.escape", wraps=escape) as html_escape:
+            report = render_html(inventory, review_urls={"original": valid})
+            self.assertTrue(any(
+                call.args == (valid,) and call.kwargs == {"quote": True}
+                for call in html_escape.call_args_list
+            ))
+        self.assertIn("Open in Gmail", report)
+
+        unsafe = 'https://mail.google.com/mail/#all/abcd1234" onclick="alert(1)'
+        report = render_html(inventory, review_urls={"original": unsafe})
+        self.assertNotIn("Open in Gmail", report)
+        self.assertNotIn("onclick", report)
+
+        report = render_html(inventory, review_urls={"original": "https://example.invalid/abcd1234"})
+        self.assertNotIn("Open in Gmail", report)
 
 
 class HtmlCliTests(unittest.TestCase):

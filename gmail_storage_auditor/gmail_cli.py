@@ -20,6 +20,7 @@ from .inventory import InventoryError, Scope, collect_inventory
 from .report import render_inventory
 from .duplicates import analyze_duplicates
 from .duplicate_report import render_duplicates
+from .html_report import render_html
 
 
 def _outside_repository(path_text: str, *, must_exist: bool) -> Path:
@@ -104,6 +105,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--client-secrets", required=True, help="OAuth desktop-client JSON outside this repository")
     parser.add_argument("--token", required=True, help="OAuth token JSON outside this repository")
     parser.add_argument("--duplicates", action="store_true", help="Append analysis-only duplicate metadata report")
+    parser.add_argument("--html", metavar="PATH", help="Create a standalone HTML report outside the repository; path must not exist")
     return parser
 
 
@@ -116,6 +118,17 @@ def main(argv: list[str] | None = None) -> int:
         print("Gmail inventory failed: gmail_page_limit_invalid", file=sys.stderr)
         return 2
     try:
+        html_path = None
+        if args.html is not None:
+            try:
+                html_path = Path(args.html).expanduser().resolve()
+                repository = Path(__file__).resolve().parents[1]
+                if html_path == repository or repository in html_path.parents:
+                    raise GmailConnectorError("html_path_inside_repository")
+                if html_path.exists() or not html_path.parent.is_dir():
+                    raise GmailConnectorError("html_path_unavailable")
+            except (OSError, ValueError, RuntimeError):
+                raise GmailConnectorError("html_path_unavailable") from None
         credentials = load_credentials(
             client_secrets_path=args.client_secrets, token_path=args.token
         )
@@ -127,8 +140,16 @@ def main(argv: list[str] | None = None) -> int:
             as_of=datetime.now(timezone.utc),
             max_pages=args.max_pages,
         )
-        report = render_duplicates(analyze_duplicates(inventory)) if args.duplicates else render_inventory(inventory)
+        analysis = analyze_duplicates(inventory) if args.duplicates else None
+        report = render_duplicates(analysis) if analysis is not None else render_inventory(inventory)
         print(report, end="")
+        if html_path is not None:
+            html = render_html(analysis if analysis is not None else inventory)
+            try:
+                with html_path.open("x", encoding="utf-8", newline="\n") as output:
+                    output.write(html)
+            except (OSError, UnicodeError):
+                raise GmailConnectorError("html_report_write_failed") from None
         return 0
     except (GmailConnectorError, InventoryError) as error:
         print(f"Gmail inventory failed: {error}", file=sys.stderr)

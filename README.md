@@ -112,6 +112,22 @@ Run the full regression suite (inventory, connector, and duplicate analysis):
 python -B -m unittest discover -s tests -v
 ```
 
+## Standalone local HTML report
+
+Append `--html <path>` to the existing Gmail CLI command to create a self-contained HTML inventory. Add `--duplicates` to include the existing duplicate-analysis results as well:
+
+```powershell
+python -B -m gmail_storage_auditor.gmail_cli --query "larger:10M" --max-pages 2 --client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\client.json" --token "$env:LOCALAPPDATA\gmail-storage-auditor\token.json" --duplicates --html "$env:LOCALAPPDATA\gmail-storage-auditor\report.html"
+```
+
+Open the resulting file directly in a browser. It includes summary metrics, coverage and limitations, the message inventory, duplicate evidence and retained-copy proposals when requested, and explicit analysis-only safety language. Without `--duplicates`, the duplicate section says analysis was not requested. Existing console output stays unchanged.
+
+The file contains inline CSS, no JavaScript, no external resources, and a restrictive content security policy. All supplied text is HTML-escaped. Rendering makes no network calls and adds no server, browser launch, cache, or auxiliary files. The Gmail CLI still uses its existing read-only discovery and authentication flow; HTML export adds no Gmail operations or changes to analysis.
+
+The destination must be a new file in an existing directory outside the checkout, consistent with the repository privacy rule. Existing files are never overwritten. Errors use fixed diagnostics without exposing output paths. A disk/write failure may leave an incomplete file at the requested destination; no temporary report file is created. Real reports can contain private filenames and observations and must not be committed or shared in logs.
+
+For already collected results, `gmail_storage_auditor.html_report.render_html(result)` accepts either an `Inventory` or a `DuplicateAnalysis` and returns an HTML string without I/O. The caller controls whether to save that string. Synthetic snapshots live in `tests/snapshots/`; the full regression command above checks them byte-for-byte after UTF-8 decoding.
+
 ## Core principles
 
 - Analyze first; never delete during analysis.

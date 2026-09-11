@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Gmail Storage Auditor report</title>
+<style>
+body{font-family:system-ui,sans-serif;line-height:1.5;color:#172b3a;background:#f4f6f8;margin:0}
+main{max-width:1200px;margin:auto;padding:2rem}h1,h2,h3{line-height:1.2}
+section,article{background:white;border:1px solid #cbd5df;border-radius:.5rem;padding:1rem;margin:1rem 0}
+.notice{border-left:5px solid #956000}dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}
+dt{font-weight:bold}dd{margin:0}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}
+th,td{text-align:left;vertical-align:top;border-bottom:1px solid #cbd5df;padding:.6rem;overflow-wrap:anywhere}
+th{background:#edf2f7}li,dd,p{overflow-wrap:anywhere}td ul{margin:0;padding-left:1rem}
+@media print{body{background:white}main{padding:0;max-width:none}.table-scroll{overflow:visible}section,article{break-inside:avoid}}
+</style>
+</head>
+<body>
+<main>
+<h1>Gmail Storage Auditor</h1>
+<section class="notice" aria-label="Analysis-only safety notice">
+<h2>Analysis only</h2>
+<p>This report does not delete, trash, archive, change labels or read state, or make any other Gmail mutation. It grants no approval for mailbox changes.</p>
+<p>No removal recommendations, risk tiers, scores, or savings estimates are produced. Retained copies are proposals for review, not proof that a whole message is redundant.</p>
+<p>Private local report: filenames, dates, and supplied observations may be sensitive. Keep this file out of repositories and shared logs.</p>
+</section>
+<section><h2>Summary</h2>
+<dl><dt>Source</dt><dd>synthetic</dd><dt>Scope</dt><dd>Synthetic empty</dd><dt>Coverage</dt><dd>targeted scope only</dd><dt>As of (UTC)</dt><dd>2026-09-07T00:00:00+00:00</dd><dt>Scan</dt><dd>complete for requested scope</dd><dt>Pages read</dt><dd>1</dd><dt>Unique observed messages</dt><dd>0</dd><dt>Known whole-message estimated bytes</dt><dd>0</dd><dt>Messages with unknown size</dt><dd>0</dd><dt>Duplicate metadata clusters</dt><dd>not analyzed</dd></dl>
+</section>
+<section class="notice"><h2>Limitations and warnings</h2>
+<ul><li>Storage estimates apply only to observed records; they do not measure account quota or recoverable space.</li><li>Attachment bytes are not added to whole-message totals. Unknown sizes remain unknown.</li><li>Completion of a targeted scope does not imply whole-mailbox coverage.</li><li>Metadata equality does not prove identical attachment content or whole-message redundancy.</li></ul>
+</section>
+<section><h2>Message inventory</h2>
+<div class="table-scroll"><table>
+<caption>Observed messages in inventory order</caption>
+<thead><tr><th scope="col">Reference</th><th scope="col">Estimated bytes</th><th scope="col">Date (UTC)</th><th scope="col">Age (days)</th><th scope="col">Thread</th><th scope="col">Direction</th><th scope="col">Attachments</th><th scope="col">Supplied observations</th></tr></thead>
+<tbody>
+</tbody></table></div>
+<p>No messages observed.</p>
+</section>
+<section><h2>Duplicate clusters</h2>
+<p>Duplicate analysis was not requested.</p>
+</section>
+</main>
+</body>
+</html>

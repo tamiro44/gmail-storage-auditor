@@ -1,6 +1,8 @@
 """Standalone HTML presentation. Pure rendering: no analysis, I/O, or network."""
 
 from html import escape
+from collections.abc import Mapping
+import re
 
 from .duplicates import DuplicateAnalysis
 from .inventory import Inventory
@@ -8,6 +10,18 @@ from .inventory import Inventory
 
 def _text(value: object) -> str:
     return escape("unknown" if value is None else str(value), quote=True)
+
+
+def _review_link(value: object) -> str:
+    if not isinstance(value, str) or re.fullmatch(
+        r"https://mail\.google\.com/mail/#all/[0-9a-f]{8,64}", value,
+        flags=re.ASCII | re.IGNORECASE,
+    ) is None:
+        return ""
+    return (
+        f'<a class="review-link" href="{escape(value, quote=True)}" '
+        'target="_blank" rel="noopener noreferrer">Open in Gmail</a>'
+    )
 
 
 def _list(values) -> str:
@@ -27,10 +41,15 @@ def _cards(items) -> str:
     ) + "</div>"
 
 
-def render_html(result: Inventory | DuplicateAnalysis) -> str:
+def render_html(
+    result: Inventory | DuplicateAnalysis,
+    *,
+    review_urls: Mapping[str, str] | None = None,
+) -> str:
     """Render supplied results in their existing order, without recomputing analysis."""
     analysis = result if isinstance(result, DuplicateAnalysis) else None
     inventory = analysis.inventory if analysis is not None else result
+    review_urls = review_urls or {}
     lines = [
         "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -44,6 +63,7 @@ def render_html(result: Inventory | DuplicateAnalysis) -> str:
         ".card{background:#edf2f7;border-radius:.4rem;padding:1rem}.card span{display:block;color:#465b6b}.card strong{display:block;font-size:1.35rem;margin-top:.25rem}",
         ".authority{border-left-width:6px}.source-supported{border-left-color:#177245}.unresolved{border-left-color:#b36b00}",
         ".status{display:inline-block;border-radius:999px;padding:.15rem .55rem;font-weight:bold}.source-supported .status{background:#d9f2e4;color:#105b37}.unresolved .status{background:#fff0d5;color:#754600}",
+        ".review-link{display:inline-block;background:#1a73e8;color:white;border-radius:.3rem;padding:.35rem .65rem;text-decoration:none;font-weight:bold;white-space:nowrap}.review-link:focus,.review-link:hover{background:#1558b0}",
         "dl{display:grid;grid-template-columns:minmax(10rem,1fr) 2fr;gap:.4rem 1rem}",
         "dt{font-weight:bold}dd{margin:0}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}",
         "th,td{text-align:left;vertical-align:top;border-bottom:1px solid #cbd5df;padding:.6rem;overflow-wrap:anywhere}",
@@ -89,9 +109,10 @@ def render_html(result: Inventory | DuplicateAnalysis) -> str:
     lines.extend([_list(warnings), "</section>", "<section><h2>Message inventory</h2>",
                   '<div class="table-scroll"><table>', "<caption>Observed messages in inventory order</caption>",
                   "<thead><tr>" + "".join(f'<th scope="col">{label}</th>' for label in
-                  ("Reference", "Estimated bytes", "Date (UTC)", "Age (days)", "Thread", "Direction", "Attachments", "Supplied observations")) + "</tr></thead>", "<tbody>"])
+                  ("Reference", "Review", "Estimated bytes", "Date (UTC)", "Age (days)", "Thread", "Direction", "Attachments", "Supplied observations")) + "</tr></thead>", "<tbody>"])
     for message in inventory.messages:
-        cells = [_text(message.ref), _text(message.size_estimate_bytes),
+        cells = [_text(message.ref), _review_link(review_urls.get(message.ref)),
+                 _text(message.size_estimate_bytes),
                  _text(message.date.isoformat() if message.date else None),
                  _text((inventory.as_of - message.date).days if message.date else None),
                  _text(message.thread_ref), _text(message.direction)]

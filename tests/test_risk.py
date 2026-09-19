@@ -56,8 +56,26 @@ class RiskTests(unittest.TestCase):
         self.assertEqual((failed.recommendation, failed.risk), ("review", "unknown"))
         self.assertNotIn("synthetic failure", repr(failed))
 
+        class Malformed:
+            def classify(self, message):
+                return (RiskFinding("", "fabricated evidence", "fixture"),)
+        malformed, = classify_risk(inventory(Message("x")), semantic_classifier=Malformed())
+        self.assertEqual((malformed.recommendation, malformed.risk), ("review", "unknown"))
+        self.assertIn("classification_uncertain", malformed.categories)
+
     def test_missing_or_weakened_policy_fails_closed(self):
-        weakened = "version: 0.1\nprotected_categories:\n  legal: protected\nsentimental_media:\n  default: safe\n"
+        weakened = """version: 0.1
+protected_categories:
+  tax: protected
+  legal: review
+  financial: protected
+  medical: protected
+  identity: protected
+  employment: protected
+  signed_documents: protected
+sentimental_media:
+  default: review
+"""
         with patch("pathlib.Path.read_text", return_value=weakened):
             with self.assertRaises(PolicyError):
                 load_risk_policy("synthetic-policy.yaml")

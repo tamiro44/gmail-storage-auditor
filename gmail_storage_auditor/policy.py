@@ -16,6 +16,9 @@ class RiskPolicy:
 
 
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent.parent / "config" / "policy.yaml"
+REQUIRED_PROTECTED_CATEGORIES = frozenset(
+    ("tax", "legal", "financial", "medical", "identity", "employment", "signed_documents")
+)
 
 
 def load_risk_policy(path: str | Path = DEFAULT_POLICY_PATH) -> RiskPolicy:
@@ -56,4 +59,6 @@ def load_risk_policy(path: str | Path = DEFAULT_POLICY_PATH) -> RiskPolicy:
         raise PolicyError("Risk policy is incomplete or has unsupported safety defaults.")
     if len(set(protected)) != len(protected):
         raise PolicyError("Risk policy contains duplicate protected categories.")
+    if not REQUIRED_PROTECTED_CATEGORIES.issubset(protected):
+        raise PolicyError("Risk policy weakens a required protected category.")
     return RiskPolicy(version, tuple(protected), sentimental)

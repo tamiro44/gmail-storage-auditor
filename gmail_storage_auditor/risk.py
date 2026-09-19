@@ -14,6 +14,15 @@ class RiskFinding:
     evidence: str
     source: str
 
+    def __post_init__(self) -> None:
+        for value, field in (
+            (self.category, "category"),
+            (self.evidence, "evidence"),
+            (self.source, "source"),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Risk finding {field} must be a non-empty string.")
+
 
 class SemanticClassifier(Protocol):
     """Optional advisory classifier. It has no action or policy capability."""

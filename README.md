@@ -130,6 +130,16 @@ Run the full regression suite (inventory, connector, and duplicate analysis):
 python -B -m unittest discover -s tests -v
 ```
 
+## Explicit quarantine review boundary (GSA-016)
+
+`gmail_storage_auditor.quarantine` provides a separate, opt-in action API for applying the existing Gmail label named exactly `quarentine`. Read-only inventory and duplicate-analysis commands do not import or invoke this action path and remain mutation-free. The API accepts exact opaque references only through a `CandidateSelection` already produced by the project's candidate/safety policy, and requires a `QuarantineApproval` bound to the active interaction and an exact approved subset. Analysis output, a boolean, an old interaction, or an arbitrary Gmail query is not approval.
+
+The narrow adapter first looks up the existing label and fails closed if it is absent; it never creates a label. For each approved message it calls only message-level label modification with `quarentine` in the add list and an empty remove list. It cannot trash, delete, archive, change read/unread state, mutate a thread, or remove existing labels. Each message is attempted at most once. Partial failures are reported with fixed reasons and opaque references only, without provider IDs or raw provider errors.
+
+This optional action requires a distinct credential containing exactly Gmail's minimum message-label mutation scope, `https://www.googleapis.com/auth/gmail.modify` (non-Gmail identity scopes may coexist). The existing inventory credential remains strictly `gmail.readonly`; the read-only CLI does not request or accept the modify scope. Creating an interactive quarantine CLI and its credential lifecycle requires separate security review; this issue exposes the guarded adapter API without silently upgrading existing tokens.
+
+Quarantine is reversible human-review state, not deletion authorization. It does not delete, trash, archive, or recover storage. A future deletion workflow must require presence in `quarentine` as a necessary condition and must still obtain its own fresh, explicit authorization; this feature implements no deletion path. Automated tests use fabricated calls and request spies only. Any real-account smoke test must be explicitly user-initiated and limited to a controlled test message.
+
 ## Standalone local HTML report
 
 Append `--html <path>` to the existing Gmail CLI command to create a self-contained HTML inventory. Add `--duplicates` to include the existing duplicate-analysis results as well:

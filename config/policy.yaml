@@ -30,6 +30,11 @@ sentimental_media:
 actions:
   analyze: allowed
   recommend: allowed
+  quarantine:
+    label: quarentine
+    require_candidate_policy: true
+    require_explicit_current_user_approval: true
+    deletion_authorization: false
   mailbox_changes: require_explicit_current_user_approval
 
 recommendation_tiers:

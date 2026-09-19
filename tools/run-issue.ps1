@@ -239,7 +239,9 @@ function Invoke-IssueRunner {
     $issueBody = if ($null -eq $issue.body) { "" } else { [string]$issue.body }
     $task = New-CodexTask -Number $IssueNumber -Title $issue.title -Body $issueBody -Url $issue.url
     Write-Host "Running local Codex for issue #$IssueNumber on $BranchName..."
-    $task | & $codex exec --ephemeral --ignore-user-config --sandbox workspace-write --approve-for-me -c sandbox_workspace_write.network_access=false -C $RepositoryRoot -
+    # --approve-for-me provides autonomous approval review in the workspace-write
+    # sandbox; current Codex CLI releases reject combining it with --sandbox.
+    $task | & $codex exec --ephemeral --ignore-user-config --approve-for-me -c sandbox_workspace_write.network_access=false -C $RepositoryRoot -
     if ($LASTEXITCODE -ne 0) {
         throw "Codex did not complete successfully. Local changes, if any, remain on '$BranchName' for inspection."
     }

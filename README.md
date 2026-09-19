@@ -130,6 +130,27 @@ Run the full regression suite (inventory, connector, and duplicate analysis):
 python -B -m unittest discover -s tests -v
 ```
 
+## Risk classification and protected-category policy (GSA-004)
+
+`gmail_storage_auditor.risk.classify_risk` applies the checked-in defaults from
+`config/policy.yaml` to normalized inventory records. Source-supplied category
+hints retain their provenance, and every immutable result includes categories,
+evidence, reasons, regret risk, and a conservative recommendation. Tax, legal,
+financial, medical, identity, employment, and signed-document observations are
+protected. Sentimental media defaults to Review.
+
+Exact duplicate metadata remains visible in the classification, but it never
+makes protected content Safe: the retained original stays Keep, and even a copy
+with source-supported authority remains Review. Unknown context also defaults to
+Review. An optional `SemanticClassifier` may add explainable findings; it cannot
+establish duplicate identity, override deterministic protection, authorize an
+action, or turn uncertainty into a Safe result. Failure or invalid semantic
+output is represented as uncertainty without exposing provider errors.
+
+The policy loader intentionally supports the repository's narrow scalar policy
+surface and fails closed if required risk defaults are missing or weakened. This
+stage performs no network access and has no mailbox action capability.
+
 ## Explicit quarantine review boundary (GSA-016)
 
 `gmail_storage_auditor.quarantine` provides a separate, opt-in action API for applying the existing Gmail label named exactly `quarentine`. Read-only inventory and duplicate-analysis commands do not import or invoke this action path and remain mutation-free. The API accepts exact opaque references only through a `CandidateSelection` already produced by the project's candidate/safety policy, and requires a `QuarantineApproval` bound to the active interaction and an exact approved subset. Analysis output, a boolean, an old interaction, or an arbitrary Gmail query is not approval.

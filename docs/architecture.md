@@ -10,7 +10,7 @@ Build a reusable skill backed by a small, deterministic domain core and replacea
 
 [README.md](../README.md), [SKILL.md](../SKILL.md), [AGENTS.md](../AGENTS.md), and [config/policy.yaml](../config/policy.yaml) govern this design. Existing invariants remain mandatory:
 
-- Analysis is read-only. No mailbox mutation, including labels or read state, belongs in analysis.
+- Analysis is read-only. No mailbox mutation, including labels or read state, belongs in analysis. Quarantine is a separate, explicit action path.
 - No Trash or deletion action without explicit user approval for exact messages/actions in the current interaction. Prior audits, scheduled runs, silence, recommendations, and board status cannot supply approval.
 - Scheduled audits produce reports only unless the user separately approves actions in the current interaction.
 - Preserve at least one authoritative copy for every duplicate cluster selected for cleanup.
@@ -67,7 +67,9 @@ flowchart TD
     U --> G[Auditor approval and fresh-state gate]
     P --> G
     D --> G
-    G -->|Allowed exact command only| X[Harness action adapter: Trash]
+    G -->|Allowed exact command only| Q[Harness quarantine adapter: add existing quarentine label]
+    Q --> J[Human review in Gmail]
+    J --> X[Later separate deletion decision; not authorized by quarantine]
     X --> F[Auditor outcome report]
     E[Synthetic evaluations and optional safe aggregates] --> K[Calibration / Retro]
     K --> V[Advisory report and reviewed policy proposal]
@@ -86,7 +88,7 @@ The core accepts ordinary structured records and returns records; contracts do n
 | Duplicate cluster | Members, evidence type and strength, contradictions, proposed authoritative retained references, and unresolved assumptions. Evidence is distinct from a confidence number. |
 | Risk / recommendation | Protected-category findings, uncertainty, tier, confidence percentage with heuristic/calibration provenance, score components, reason codes, retained-copy references, and estimated reclaimable bytes. Unknown confidence must be visible rather than invented. |
 | Report | Safe / Review / Aggressive / Keep candidates, private display resolution, coverage limits, evidence and retained safeguards, disjoint and cumulative estimated savings. |
-| Action manifest | Immutable run/account/policy binding, exact message references, exact action (Trash only in v0.1), retained set, evidence snapshot and proposal revision. A query or thread reference cannot stand in for exact message selection. |
+| Action manifest | Immutable run/account/policy binding, exact message references, exact action, retained set, evidence snapshot and proposal revision. A query or thread reference cannot stand in for exact message selection. Quarantine manifests can only name candidates already admitted by policy. |
 | Approval evidence | Authentic user selection tied to that manifest and the active interaction; explicit action and selected subset. Plain model-produced text or a bare approval boolean is insufficient. |
 | Authorization result / action port | Deny with reasons, or a narrowly scoped command bound to the approved manifest and fresh checks. Adapter cannot expand the selection or substitute a different action. |
 | Execution result | Per-message success, failure, or unknown outcome, followed by reconciliation when needed. Report completed actions separately from estimates; do not log raw provider errors containing personal data. |
@@ -103,20 +105,20 @@ Opaque references are transient linkage, not permission to persist private data.
 
 Gmail exposes message-level `sizeEstimate` and separate message operations; attachment evidence must not be double-counted on top of whole-message estimates. [Gmail message resource](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages).
 
-Moving to Trash is not immediate quota recovery: Trash continues to count toward storage until permanent removal. v0.1 reports potential recovery and confirmed moves separately, and does not empty Trash or permanently delete messages. The action adapter uses message-level Trash semantics. [Google storage guidance](https://support.google.com/mail/answer/6374270?hl=en), [Gmail Trash operation](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/trash).
+Quarantine does not recover storage: it adds a reversible review label while leaving the message and all existing labels intact. This issue has no Trash, delete, archive, or permanent-removal adapter. A later deletion design must treat the `quarentine` label as necessary but insufficient authorization and must undergo separate human review.
 
 ## Approval, execution, and failure behavior
 
 Analysis ends with a report. Execution is an optional, separate path:
 
-1. Construct and display an exact action proposal, including retained-copy safeguards and relevant uncertainty.
-2. Receive explicit user approval of that proposal or an exact subset in the current interaction. Approval does not waive domain invariants. Changed actions, newly added messages, or a changed proposal require renewed approval.
-3. Re-read target and retained-copy state immediately before execution. Verify the same account, active interaction, policy/evidence binding, approved membership, and authoritative retention across the entire selected set. A message retained for any selected cluster cannot also be selected for Trash through another cluster.
-4. Deny or invalidate authorization if required state is unavailable, the retained copy is missing/in Trash, protection or evidence changed, the policy changed, or approval is stale. Recompute and seek approval for a materially changed proposal. Never choose a replacement retained copy silently after approval.
-5. Issue only the allowed exact command to the harness action adapter. Check prerequisites before each operation; stop dependent operations on failure. No thread-wide mutation, dynamic search expansion, automatic fallback to permanent deletion, or unattended replay.
-6. Reconcile timeout/unknown outcomes with read operations before considering a retry. Retry only within the same still-valid approval and after fresh gate checks; a restarted or later interaction needs fresh approval. Report partial results honestly.
+1. Construct and display an exact quarantine proposal from candidates already admitted by the safety policy, including retained-copy safeguards and relevant uncertainty.
+2. Receive explicit user confirmation of the `apply_quarentine_label` action for that proposal or an exact subset in the current interaction. Approval does not waive domain invariants. Changed actions, newly added messages, or a changed proposal require renewed approval.
+3. Verify the same account, active interaction, policy/selection binding, and approved membership across the entire selected set. Resolve every opaque reference before the first mutation; unavailable state fails closed.
+4. Deny or invalidate authorization if required state is unavailable, the policy-issued selection changed, the policy version changed, or approval is stale. Recompute and seek approval for a materially changed proposal; quarantine never turns an analysis result into a candidate itself.
+5. Look up the existing label named exactly `quarentine`, then issue only message-level label modification with that label added and no labels removed. Never create the label, mutate a thread, change read state, archive, Trash, delete, dynamically expand a query, or fall back to another operation.
+6. Attempt each approved message once and report partial results honestly. Do not automatically retry an unknown or failed outcome because the provider may already have applied it. A later attempt requires a new explicit action decision.
 
-Fresh reads reduce races but cannot promise an atomic mailbox snapshot or stop an independent client from deleting a retained message after validation. Minimize the interval, serialize dependent actions, stop on observed changes, and disclose this limitation. Do not claim transactional protection unsupported by the connector.
+Message-level modifications are not transactional as a group. Resolve the complete exact selection before starting, serialize attempts, never retry automatically, and disclose each success or failure independently.
 
 ## Calibration / Retro Agent
 
@@ -154,7 +156,7 @@ GSA-001 verification is documentary: compare the design with the governing files
 | Sequential deterministic core; optional semantic classification | Reproducible decisions, smaller runtime surface, lower model dependence | Metadata uncertainty produces more Review/Keep results and less apparent recovery. |
 | Harness-independent records and gate | Reusable across hosts; domain safety has one owner | Each adapter needs conformance evidence; prompts alone cannot enforce the boundary. |
 | Transient private state and no mailbox-content logs | Preserves repository and runtime privacy invariants | Reduced debugging and durable resume; interrupted interactions need fresh evidence/approval. |
-| Exact-message Trash only | Narrow, reviewable action scope | Whole-message context matters; no immediate quota recovery guarantee or attachment-only cleanup. |
+| Exact-message quarantine before any later deletion decision | Adds a reversible human-review boundary | Requires the user-created `quarentine` label and a distinct modify-scope credential; quarantine itself recovers no storage and authorizes no deletion. |
 | Human-reviewed calibration | Prevents feedback loops from silently changing policy | Slower adaptation and limited real-world evidence. |
 | External board and orchestration | Avoids rebuilding commodity infrastructure | Host lifecycle, licensing, and capability differences remain integration concerns. |
 

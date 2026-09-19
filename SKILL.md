@@ -13,12 +13,17 @@ Audit a Gmail mailbox for storage recovery opportunities without making destruct
 5. **Score** — estimate recoverable space, duplicate confidence, regret risk, and cleanup value.
 6. **Recommend** — produce Safe / Review / Aggressive / Keep tiers with concise reasons.
 7. **Approve** — request explicit user approval for exact messages/actions.
-8. **Act** — only after approval, move selected messages to Trash using the connected mail tool.
-9. **Report** — summarize estimated recovered space and retained safeguards.
+8. **Quarantine** — only after a separate explicit action confirmation, apply the existing `quarentine` label to exact policy-selected candidates for human review.
+9. **Review** — inspect quarantined messages in Gmail; quarantine is reversible and is not deletion authorization.
+10. **Act** — any Trash or deletion decision is a later, separately approved workflow and is not implemented by quarantine.
+11. **Report** — summarize opaque per-message outcomes without provider-private identifiers.
 
 ## Required safety invariants
 
 - Analysis is read-only.
+- Quarantine is opt-in, applies only the existing `quarentine` label, and never deletes, trashes, archives, changes read state, or removes labels.
+- Quarantine approval is bound to exact policy-selected candidates in the current interaction; a report or prior approval cannot authorize it.
+- Presence in `quarentine` is necessary but never sufficient authorization for any future deletion workflow.
 - No deletion/trash action without explicit user approval in the current interaction.
 - Never infer approval from a prior audit or scheduled run.
 - Scheduled audits are report-only unless the user separately approves actions.

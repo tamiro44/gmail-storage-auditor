@@ -30,6 +30,17 @@ sentimental_media:
 actions:
   analyze: allowed
   recommend: allowed
+  quarantine:
+    label: quarentine
+    require_candidate_policy: true
+    require_explicit_current_user_approval: true
+    deletion_authorization: false
+    allowed_gmail_oauth_scopes:
+      - https://www.googleapis.com/auth/gmail.modify
+    allowed_identity_oauth_scopes:
+      - openid
+      - email
+    identity_scope_justification: authenticated account binding only
   mailbox_changes: require_explicit_current_user_approval
 
 recommendation_tiers:

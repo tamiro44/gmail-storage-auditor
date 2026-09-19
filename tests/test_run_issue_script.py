@@ -45,18 +45,21 @@ class LocalIssueRunnerTests(unittest.TestCase):
             '@("login", "status")',
             "-CaptureStandardError",
             "--ephemeral",
-            "--ignore-user-config",
-            "--approve-for-me",
+            "--sandbox workspace-write",
+            "--ask-for-approval never",
             "sandbox_workspace_write.network_access=false",
+            "sandbox_workspace_write.writable_roots=[]",
             "-C $RepositoryRoot -",
         ):
             self.assertIn(required, self.source)
         self.assertIn(
-            "$task | & $codex exec --ephemeral --ignore-user-config --approve-for-me "
-            "-c sandbox_workspace_write.network_access=false -C $RepositoryRoot -",
+            "$task | & $codex --ask-for-approval never exec --sandbox workspace-write "
+            "--ephemeral -c sandbox_workspace_write.network_access=false "
+            "-c sandbox_workspace_write.writable_roots=[] -C $RepositoryRoot -",
             self.source,
         )
-        self.assertNotIn("--sandbox workspace-write", self.source)
+        self.assertNotIn("--approve-for-me", self.source)
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", self.source)
         self.assertNotIn("--with-api-key", self.source)
         self.assertNotRegex(self.source, r"\$env:(OPENAI_API_KEY|CODEX_API_KEY)\s*=")
 
@@ -80,7 +83,7 @@ if (Test-CodexChatGptLoginStatus -ExitCode 0 -Output @('Not logged in. Run codex
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_validation_and_publication_order(self):
-        codex = self.source.index("$task | & $codex exec")
+        codex = self.source.index("$task | & $codex --ask-for-approval never")
         tests = self.source.index('@("-B", "-m", "unittest", "discover"')
         whitespace = self.source.index('@("diff", "--check")')
         push = self.source.index('@("push", "--set-upstream"')

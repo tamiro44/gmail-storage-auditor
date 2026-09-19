@@ -39,19 +39,24 @@ class LocalIssueRunnerTests(unittest.TestCase):
             self.assertIn(required, self.source)
         self.assertNotRegex(self.source, r"\bgh\s+pr\s+merge\b")
 
-    def test_codex_uses_saved_login_and_bounded_noninteractive_flags(self):
+    def test_codex_uses_current_bounded_noninteractive_invocation(self):
         for required in (
             "codex.cmd",
             '@("login", "status")',
             "-CaptureStandardError",
             "--ephemeral",
             "--ignore-user-config",
-            "--sandbox workspace-write",
             "--approve-for-me",
             "sandbox_workspace_write.network_access=false",
             "-C $RepositoryRoot -",
         ):
             self.assertIn(required, self.source)
+        self.assertIn(
+            "$task | & $codex exec --ephemeral --ignore-user-config --approve-for-me "
+            "-c sandbox_workspace_write.network_access=false -C $RepositoryRoot -",
+            self.source,
+        )
+        self.assertNotIn("--sandbox workspace-write", self.source)
         self.assertNotIn("--with-api-key", self.source)
         self.assertNotRegex(self.source, r"\$env:(OPENAI_API_KEY|CODEX_API_KEY)\s*=")
 

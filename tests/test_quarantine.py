@@ -6,6 +6,7 @@ from gmail_storage_auditor.quarantine import (
     CandidateSelection,
     GMAIL_MODIFY_SCOPE,
     GmailQuarantineAdapter,
+    QUARANTINE_IDENTITY_SCOPES,
     QuarantineApproval,
     QuarantineError,
     render_quarantine_result,
@@ -119,13 +120,16 @@ class QuarantineSafetyTests(unittest.TestCase):
         self.assertNotIn("provider-b", report)
         self.assertNotIn("synthetic provider detail", report)
 
-    def test_scope_is_minimal_and_broad_or_readonly_scopes_are_rejected(self):
-        validate_quarantine_scopes((GMAIL_MODIFY_SCOPE, "openid"))
+    def test_scope_policy_allows_only_modify_and_justified_identity_scopes(self):
+        self.assertEqual(QUARANTINE_IDENTITY_SCOPES, frozenset(("openid", "email")))
+        validate_quarantine_scopes((GMAIL_MODIFY_SCOPE, "openid", "email"))
         for scopes in (
             ("https://www.googleapis.com/auth/gmail.readonly",),
             ("https://www.googleapis.com/auth/gmail.labels",),
             ("https://mail.google.com/",),
             (GMAIL_MODIFY_SCOPE, "https://www.googleapis.com/auth/gmail.send"),
+            (GMAIL_MODIFY_SCOPE, "profile"),
+            (GMAIL_MODIFY_SCOPE, "https://www.googleapis.com/auth/userinfo.profile"),
         ):
             with self.subTest(scopes=scopes):
                 with self.assertRaises(QuarantineError):

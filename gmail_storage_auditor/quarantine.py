@@ -13,6 +13,9 @@ from typing import Any
 QUARANTINE_LABEL_NAME = "quarentine"
 GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
 GMAIL_QUARANTINE_SCOPES = (GMAIL_MODIFY_SCOPE,)
+# These optional OpenID Connect scopes support account identity binding only.
+# They do not grant Gmail access and are not needed to mutate a message.
+QUARANTINE_IDENTITY_SCOPES = frozenset(("openid", "email"))
 LABEL_LIST_FIELDS = "labels(id,name,type)"
 
 
@@ -31,7 +34,7 @@ class QuarantineError(ValueError):
 
 
 def validate_quarantine_scopes(scopes: Iterable[str] | None) -> None:
-    """Accept only Gmail's minimum message-label mutation scope."""
+    """Allow gmail.modify plus optional identity-only OpenID Connect scopes."""
     if scopes is None:
         raise QuarantineError("gmail_scope_missing")
     try:
@@ -47,6 +50,8 @@ def validate_quarantine_scopes(scopes: Iterable[str] | None) -> None:
     }
     if gmail_scopes != {GMAIL_MODIFY_SCOPE}:
         raise QuarantineError("gmail_scope_not_strictly_modify")
+    if granted - gmail_scopes - QUARANTINE_IDENTITY_SCOPES:
+        raise QuarantineError("oauth_scope_not_allowed_for_quarantine")
 
 
 @dataclass(frozen=True)

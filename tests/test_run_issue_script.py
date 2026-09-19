@@ -43,6 +43,7 @@ class LocalIssueRunnerTests(unittest.TestCase):
         for required in (
             "codex.cmd",
             '@("login", "status")',
+            "-CaptureStandardError",
             "--ephemeral",
             "--ignore-user-config",
             "--sandbox workspace-write",
@@ -53,6 +54,25 @@ class LocalIssueRunnerTests(unittest.TestCase):
             self.assertIn(required, self.source)
         self.assertNotIn("--with-api-key", self.source)
         self.assertNotRegex(self.source, r"\$env:(OPENAI_API_KEY|CODEX_API_KEY)\s*=")
+
+    @unittest.skipUnless(shutil.which("powershell.exe"), "PowerShell is unavailable")
+    def test_current_codex_chatgpt_login_status_output(self):
+        command = rf"""
+. '{SCRIPT}' -IssueNumber 16
+if (-not (Test-CodexChatGptLoginStatus -ExitCode 0 -Output @('Logged in using ChatGPT'))) {{ exit 2 }}
+if (Test-CodexChatGptLoginStatus -ExitCode 1 -Output @('Logged in using ChatGPT')) {{ exit 3 }}
+if (Test-CodexChatGptLoginStatus -ExitCode 0 -Output @('Logged in using an API key')) {{ exit 4 }}
+if (Test-CodexChatGptLoginStatus -ExitCode 0 -Output @('Not logged in. Run codex login to use ChatGPT')) {{ exit 5 }}
+"""
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_validation_and_publication_order(self):
         codex = self.source.index("$task | & $codex exec")

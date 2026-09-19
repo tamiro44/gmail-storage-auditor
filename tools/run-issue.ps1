@@ -56,18 +56,35 @@ function Invoke-CheckedCommand {
 function Invoke-ProbeCommand {
     param(
         [Parameter(Mandatory = $true)][string]$Command,
-        [Parameter(Mandatory = $true)][string[]]$Arguments
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [switch]$CaptureStandardError
     )
 
     $previousErrorAction = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        $output = @(& $Command @Arguments 2>$null)
+        if ($CaptureStandardError) {
+            $output = @(& $Command @Arguments 2>&1)
+        } else {
+            $output = @(& $Command @Arguments 2>$null)
+        }
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousErrorAction
     }
     return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
+}
+
+function Test-CodexChatGptLoginStatus {
+    param(
+        [Parameter(Mandatory = $true)][int]$ExitCode,
+        [AllowEmptyCollection()][object[]]$Output
+    )
+
+    if ($ExitCode -ne 0) {
+        return $false
+    }
+    return (($Output -join "`n") -match "(?m)^\s*Logged in using ChatGPT\s*$")
 }
 
 function Assert-CleanStatus {
@@ -168,8 +185,9 @@ function Invoke-IssueRunner {
         throw "GitHub CLI is not authenticated. Run 'gh auth login -h github.com' and retry."
     }
 
-    $codexAuth = Invoke-ProbeCommand -Command $codex -Arguments @("login", "status")
-    if ($codexAuth.ExitCode -ne 0 -or ($codexAuth.Output -join "`n") -notmatch "ChatGPT") {
+    # Current Codex CLI releases write login status to stderr even on success.
+    $codexAuth = Invoke-ProbeCommand -Command $codex -Arguments @("login", "status") -CaptureStandardError
+    if (-not (Test-CodexChatGptLoginStatus -ExitCode $codexAuth.ExitCode -Output @($codexAuth.Output))) {
         throw "Codex CLI is not authenticated with ChatGPT. Run 'codex login' and retry."
     }
 

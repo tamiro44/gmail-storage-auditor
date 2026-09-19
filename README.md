@@ -2,6 +2,24 @@
 
 A reusable, safety-first Gmail storage optimization skill/agent.
 
+## Run a GitHub issue locally with Codex
+
+The optional local issue runner turns one open GitHub issue into a reviewable implementation branch and pull request using the Codex CLI login already present on your machine:
+
+```powershell
+.\tools\run-issue.ps1 16
+```
+
+Run it from a normal VS Code PowerShell terminal. Prerequisites are Git, Python 3.11 or newer, [GitHub CLI](https://cli.github.com/), and [Codex CLI](https://learn.chatgpt.com/docs/non-interactive-mode). Authenticate GitHub with `gh auth login -h github.com` and Codex with `codex login` before the first run. The script requires the Codex status to report a ChatGPT login. It refuses to run when `OPENAI_API_KEY` or `CODEX_API_KEY` is present, never adds API billing or key configuration, and never reads, copies, exports, or writes Codex credentials. On Windows it prefers `codex.cmd`, avoiding execution-policy failures from an npm PowerShell shim.
+
+The command must start with a completely clean Git working tree, including no untracked files. It fetches `origin/main`, updates local `main` only by fast-forward, and requires local and remote main to match. It refuses to overwrite an existing local or remote `agent/issue-<number>` branch. A failure leaves the current branch and any local changes available for manual inspection; rerun only after resolving them safely.
+
+The runner fetches the issue with `gh`, creates `agent/issue-<number>`, and pipes the issue title/body plus the repository safety rules directly to `codex exec`. Codex runs ephemerally with `workspace-write`, rooted at this checkout, using the saved local ChatGPT/Codex authentication. The task forbids real Gmail access, credentials, mailbox content, Gmail API calls, and mailbox mutation; tests must use synthetic fixtures. It also tells Codex not to commit or publish anything.
+
+After Codex returns, the script verifies that Git history did not change, runs the full unittest suite and `git diff --check`, requires an actual diff, and displays concise status/stat output. Only after all checks pass does the script commit, push the new branch, and open a pull request containing `Closes #<issue-number>`. It never merges. Human PR review and approval remain mandatory, especially for changes to Gmail permissions or mutation boundaries.
+
+This local runner is independent of the existing `.github/workflows/codex-issue-orchestrator.yml`. That GitHub Actions workflow remains unchanged while the local approach is evaluated. The local script creates no task, transcript, credential, or agent-session file; `--ephemeral` disables durable Codex rollout files. Git commits, the pushed branch, and the pull request are the deliberate workflow outputs.
+
 ## Goal
 
 Find storage-saving opportunities in Gmail while minimizing deletion regret. The system identifies large and old messages, duplicate attachments, forwarded/self-sent copies, low-value archives, and other cleanup candidates, then ranks them by expected space savings, confidence, and risk.

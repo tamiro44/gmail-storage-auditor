@@ -53,3 +53,7 @@ scoring:
   model: explainable
   conceptual_formula: "space_saved * confidence / risk"
   require_reason: true
+  source_supported_confidence_percent: 85
+  strong_metadata_confidence_percent: 60
+  high_risk_weight: 4
+  unknown_risk_weight: 5

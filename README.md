@@ -201,6 +201,24 @@ Conceptually:
 
 The exact scoring model is configurable and should remain explainable.
 
+## Explainable cleanup scoring and report (GSA-005)
+
+`score_cleanup(duplicate_analysis, risk_classifications)` ranks each observed
+message once using the versioned numeric inputs in `config/policy.yaml`.
+Recommendations remain constrained by the earlier risk and retained-copy
+decisions: proposed retained copies and messages without a source-supported
+authoritative copy are Keep with zero estimated recovery. Under the current
+conservative evidence model, eligible duplicate copies remain Review; empty
+Safe and Aggressive groups are explicit rather than populated by weaker rules.
+
+`render_cleanup_report(plan)` produces a deterministic Markdown report with
+Safe / Review / Aggressive / Keep sections, evidence, retained-copy details,
+score components, and incremental/cumulative estimated savings. Whole-message
+sizes are provider estimates, confidence percentages are configured heuristics,
+and scores are derived ranking values—not measured recovered bytes or removal
+probabilities. Synthetic reports explicitly label their fixture values as
+illustrative. Neither API performs I/O or authorizes a mailbox action.
+
 ## Repository structure
 
 - `SKILL.md` — reusable agent/skill workflow

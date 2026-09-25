@@ -24,6 +24,32 @@ class ScoringPolicy:
     strong_metadata_confidence_percent: int
     high_risk_weight: int
     unknown_risk_weight: int
+    model: str = "explainable"
+    conceptual_formula: str = "space_saved * confidence / risk"
+    require_reason: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.version, str) or not self.version.strip():
+            raise PolicyError("Scoring policy version is invalid.")
+        numeric = (
+            self.source_supported_confidence_percent,
+            self.strong_metadata_confidence_percent,
+            self.high_risk_weight,
+            self.unknown_risk_weight,
+        )
+        if any(type(value) is not int for value in numeric):
+            raise PolicyError("Scoring policy contains a non-integer numeric value.")
+        if not (0 < self.strong_metadata_confidence_percent
+                <= self.source_supported_confidence_percent <= 100):
+            raise PolicyError("Scoring confidence values are invalid.")
+        if self.high_risk_weight < 1 or self.unknown_risk_weight < self.high_risk_weight:
+            raise PolicyError("Scoring risk weights would weaken conservative handling.")
+        if self.model != "explainable":
+            raise PolicyError("Scoring policy model is unsupported.")
+        if self.conceptual_formula != "space_saved * confidence / risk":
+            raise PolicyError("Scoring policy formula is unsupported.")
+        if self.require_reason is not True:
+            raise PolicyError("Scoring policy must require reasons.")
 
 
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent.parent / "config" / "policy.yaml"
@@ -83,13 +109,14 @@ def load_scoring_policy(path: str | Path = DEFAULT_POLICY_PATH) -> ScoringPolicy
         raise PolicyError("Scoring policy could not be read.") from exc
     version = None
     section = None
-    values: dict[str, int] = {}
-    keys = {
+    raw_values: dict[str, str] = {}
+    numeric_keys = {
         "source_supported_confidence_percent",
         "strong_metadata_confidence_percent",
         "high_risk_weight",
         "unknown_risk_weight",
     }
+    keys = numeric_keys | {"model", "conceptual_formula", "require_reason"}
     for raw in lines:
         line = raw.split("#", 1)[0].rstrip()
         if not line.strip():
@@ -102,15 +129,27 @@ def load_scoring_policy(path: str | Path = DEFAULT_POLICY_PATH) -> ScoringPolicy
                 version = text.partition(":")[2].strip()
         elif section == "scoring" and indent == 2 and ":" in text:
             key, _, raw_value = text.partition(":")
-            if key in keys:
-                try:
-                    values[key] = int(raw_value.strip())
-                except ValueError:
-                    raise PolicyError("Scoring policy contains a non-integer numeric value.") from None
-    if not version or set(values) != keys:
+            key, raw_value = key.strip(), raw_value.strip()
+            if key not in keys:
+                raise PolicyError("Scoring policy contains an unsupported key.")
+            if key in raw_values:
+                raise PolicyError("Scoring policy contains a duplicate key.")
+            raw_values[key] = raw_value
+    if not version or set(raw_values) != keys:
         raise PolicyError("Scoring policy is incomplete.")
-    if not (0 < values["strong_metadata_confidence_percent"] <= values["source_supported_confidence_percent"] <= 100):
-        raise PolicyError("Scoring confidence values are invalid.")
-    if values["high_risk_weight"] < 1 or values["unknown_risk_weight"] < values["high_risk_weight"]:
-        raise PolicyError("Scoring risk weights would weaken conservative handling.")
-    return ScoringPolicy(version=version, **values)
+    values: dict[str, int] = {}
+    for key in numeric_keys:
+        try:
+            values[key] = int(raw_values[key])
+        except ValueError:
+            raise PolicyError("Scoring policy contains a non-integer numeric value.") from None
+    formula = raw_values["conceptual_formula"]
+    if len(formula) >= 2 and formula[0] == formula[-1] and formula[0] in "\"'":
+        formula = formula[1:-1]
+    return ScoringPolicy(
+        version=version,
+        **values,
+        model=raw_values["model"],
+        conceptual_formula=formula,
+        require_reason=raw_values["require_reason"] == "true",
+    )

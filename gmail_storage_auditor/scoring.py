@@ -60,6 +60,13 @@ def score_cleanup(
     candidates = []
     for message in duplicates.inventory.messages:
         risk = by_ref[message.ref]
+        if (risk.source_inventory != duplicates.inventory
+                or risk.source_duplicates != duplicates
+                or risk.policy_version != policy.version):
+            raise ValueError(
+                "Risk classifications must belong to the exact inventory, "
+                "duplicate analysis, and policy version being scored."
+            )
         if risk.risk not in ("high", "unknown") or risk.recommendation not in ("review", "keep"):
             raise ValueError("Risk classification contains an unsupported safety decision.")
         clusters = clusters_by_ref[message.ref]

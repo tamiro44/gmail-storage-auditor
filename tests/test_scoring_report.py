@@ -11,7 +11,7 @@ from gmail_storage_auditor.duplicates import analyze_duplicates
 from gmail_storage_auditor.inventory import Attachment, Hint, Inventory, Message, Scope
 from gmail_storage_auditor.policy import PolicyError, ScoringPolicy, load_scoring_policy
 from gmail_storage_auditor.risk import classify_risk
-from gmail_storage_auditor.scoring import score_cleanup
+from gmail_storage_auditor.scoring import CleanupPlan, score_cleanup
 
 
 AS_OF = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -46,7 +46,7 @@ class ScoringTests(unittest.TestCase):
 
     def test_numeric_policy_is_configurable_without_changing_recommendations(self):
         base = fixture()
-        custom = ScoringPolicy("test", 50, 40, 5, 6)
+        custom = ScoringPolicy("0.1", 50, 40, 5, 6)
         duplicates = base.duplicates
         changed = score_cleanup(duplicates, classify_risk(duplicates.inventory, duplicates), policy=custom)
         before = {x.message_ref: x for x in base.candidates}["review-copy"]
@@ -65,6 +65,34 @@ scoring:
         with patch("pathlib.Path.read_text", return_value=text), self.assertRaises(PolicyError):
             load_scoring_policy("synthetic-policy.yaml")
 
+        for policy in (
+            lambda: ScoringPolicy("0.1", 101, 60, 4, 5),
+            lambda: ScoringPolicy("0.1", 85, 60, 0, 5),
+            lambda: ScoringPolicy("0.1", 85, 60, 4, 5, require_reason=False),
+            lambda: ScoringPolicy("0.1", 85, 60, 4, 5, conceptual_formula="size"),
+        ):
+            with self.subTest(policy=policy), self.assertRaises(PolicyError):
+                policy()
+
+    def test_duplicate_or_unsupported_scoring_keys_fail_closed(self):
+        base = """version: 0.1
+scoring:
+  model: explainable
+  conceptual_formula: "space_saved * confidence / risk"
+  require_reason: true
+  source_supported_confidence_percent: 85
+  strong_metadata_confidence_percent: 60
+  high_risk_weight: 4
+  unknown_risk_weight: 5
+"""
+        for text in (
+            base + "  unknown_risk_weight: 6\n",
+            base + "  undocumented_knob: 1\n",
+        ):
+            with self.subTest(text=text), patch("pathlib.Path.read_text", return_value=text):
+                with self.assertRaises(PolicyError):
+                    load_scoring_policy("synthetic-policy.yaml")
+
     def test_classifications_must_cover_inventory_exactly_once(self):
         plan = fixture()
         classifications = classify_risk(plan.duplicates.inventory, plan.duplicates)
@@ -74,6 +102,32 @@ scoring:
         with self.assertRaises(ValueError):
             score_cleanup(plan.duplicates, weakened)
 
+    def test_same_refs_with_different_observations_are_rejected(self):
+        plan = fixture()
+        classifications = classify_risk(plan.duplicates.inventory, plan.duplicates)
+        changed_message = replace(plan.duplicates.inventory.messages[0], size_estimate_bytes=99_999)
+        changed_inventory = replace(
+            plan.duplicates.inventory,
+            messages=(changed_message, *plan.duplicates.inventory.messages[1:]),
+        )
+        changed_duplicates = analyze_duplicates(changed_inventory)
+        with self.assertRaises(ValueError):
+            score_cleanup(changed_duplicates, classifications)
+
+    def test_same_inventory_with_different_duplicate_analysis_is_rejected(self):
+        plan = fixture()
+        classifications = classify_risk(plan.duplicates.inventory, plan.duplicates)
+        changed_duplicates = replace(plan.duplicates, clusters=(), retained_refs=())
+        with self.assertRaises(ValueError):
+            score_cleanup(changed_duplicates, classifications)
+
+    def test_risk_and_scoring_policy_versions_must_match(self):
+        plan = fixture()
+        classifications = classify_risk(plan.duplicates.inventory, plan.duplicates)
+        changed_policy = ScoringPolicy("0.2", 85, 60, 4, 5)
+        with self.assertRaises(ValueError):
+            score_cleanup(plan.duplicates, classifications, policy=changed_policy)
+
 
 class CleanupReportSnapshotTests(unittest.TestCase):
     def test_synthetic_markdown_snapshot(self):
@@ -82,6 +136,24 @@ class CleanupReportSnapshotTests(unittest.TestCase):
             actual = render_cleanup_report(fixture())
             self.assertEqual(actual, expected)
             self.assertEqual(render_cleanup_report(fixture()), expected)
+
+    def test_cumulative_savings_across_populated_tiers_and_unknown_sizes(self):
+        plan = fixture()
+        template = plan.candidates[0]
+        candidates = (
+            replace(template, message_ref="safe", recommendation="safe", estimated_savings_bytes=100),
+            replace(template, message_ref="review", recommendation="review", estimated_savings_bytes=200),
+            replace(template, message_ref="aggressive", recommendation="aggressive", estimated_savings_bytes=None),
+            replace(template, message_ref="keep", recommendation="keep", estimated_savings_bytes=0),
+        )
+        report = render_cleanup_report(CleanupPlan(plan.duplicates, plan.policy_version, candidates))
+        for row in (
+            "| Safe | 100 bytes | 100 bytes | 0 |",
+            "| Review | 200 bytes | 300 bytes | 0 |",
+            "| Aggressive | 0 bytes | 300 bytes | 1 |",
+            "| Keep | 0 bytes | 300 bytes | 1 |",
+        ):
+            self.assertIn(row, report)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,9 @@ class RiskClassification:
     reasons: tuple[str, ...]
     evidence: tuple[RiskFinding, ...]
     duplicate_clusters: tuple[str, ...]
+    source_inventory: Inventory
+    source_duplicates: DuplicateAnalysis | None
+    policy_version: str
 
 
 def _supplied_findings(message: Message, policy: RiskPolicy) -> tuple[RiskFinding, ...]:
@@ -120,5 +123,6 @@ def classify_risk(
         results.append(RiskClassification(
             message.ref, risk, recommendation, categories, tuple(reasons), tuple(findings),
             tuple(f"{cluster.filename}:{cluster.size_bytes}" for cluster in clusters),
+            inventory, duplicates, policy.version,
         ))
     return tuple(results)

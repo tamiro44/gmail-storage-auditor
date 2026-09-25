@@ -33,7 +33,7 @@ class RequestSpy:
 
 
 def selection(*refs):
-    return CandidateSelection(tuple(refs), "0.1", "selection-1")
+    return CandidateSelection(tuple(refs), ("retained-000001",), "0.1", "selection-1")
 
 
 def approval(candidates, *refs, interaction="interaction-1"):
@@ -42,13 +42,17 @@ def approval(candidates, *refs, interaction="interaction-1"):
     )
 
 
-def adapter(spy, *, refs=("message-000001", "message-000002")):
+def adapter(spy, *, refs=("message-000001", "message-000002"), candidates=None,
+            audit_mode="interactive"):
+    candidates = candidates or selection(*refs)
     return GmailQuarantineAdapter(
         list_labels=spy.list_labels,
         modify_message=spy.modify_message,
         provider_ids_by_ref=dict(zip(refs, ("provider-a", "provider-b"))),
         granted_scopes=(GMAIL_MODIFY_SCOPE,),
         interaction_ref="interaction-1",
+        active_selection=candidates,
+        audit_mode=audit_mode,
     )
 
 
@@ -66,7 +70,9 @@ class QuarantineSafetyTests(unittest.TestCase):
         with self.assertRaises(QuarantineError):
             approval(candidates, "message-000002")
         with self.assertRaises(QuarantineError):
-            target.apply(approval(candidates, "message-000001", interaction="old-interaction"))
+            adapter(spy, candidates=candidates).apply(
+                approval(candidates, "message-000001", interaction="old-interaction")
+            )
         with self.assertRaisesRegex(QuarantineError, "quarantine_action_not_confirmed"):
             QuarantineApproval(
                 candidates, ("message-000001",), "interaction-1", action="analyze"
@@ -76,7 +82,7 @@ class QuarantineSafetyTests(unittest.TestCase):
     def test_request_spy_sees_only_label_lookup_and_additive_message_modify(self):
         spy = RequestSpy()
         candidates = selection("message-000001", "message-000002")
-        result = adapter(spy).apply(approval(candidates, "message-000002"))
+        result = adapter(spy, candidates=candidates).apply(approval(candidates, "message-000002"))
 
         self.assertEqual(result.quarantined_refs, ("message-000002",))
         self.assertEqual(spy.calls, [
@@ -93,14 +99,17 @@ class QuarantineSafetyTests(unittest.TestCase):
         for labels in ([], [{"id": "other", "name": "quarantine"}]):
             with self.subTest(labels=labels):
                 spy = RequestSpy(labels=labels)
+                candidates = selection("message-000001")
                 with self.assertRaisesRegex(QuarantineError, "quarentine_label_not_found"):
-                    adapter(spy).apply(approval(selection("message-000001"), "message-000001"))
+                    adapter(spy, candidates=candidates).apply(
+                        approval(candidates, "message-000001")
+                    )
                 self.assertEqual([name for name, _ in spy.calls], ["labels.list"])
 
     def test_all_refs_resolve_before_first_mutation(self):
         spy = RequestSpy()
-        target = adapter(spy, refs=("message-000001",))
         candidates = selection("message-000001", "message-000002")
+        target = adapter(spy, refs=("message-000001",), candidates=candidates)
         with self.assertRaisesRegex(QuarantineError, "approved_reference_unavailable"):
             target.apply(approval(candidates, "message-000001", "message-000002"))
         self.assertEqual([name for name, _ in spy.calls], ["labels.list"])
@@ -108,7 +117,7 @@ class QuarantineSafetyTests(unittest.TestCase):
     def test_partial_failures_are_explicit_not_retried_and_hide_provider_ids(self):
         spy = RequestSpy(fail_ids=("provider-a",))
         candidates = selection("message-000001", "message-000002")
-        result = adapter(spy).apply(approval(candidates, *candidates.refs))
+        result = adapter(spy, candidates=candidates).apply(approval(candidates, *candidates.refs))
         report = render_quarantine_result(result)
 
         self.assertEqual([name for name, _ in spy.calls].count("messages.modify"), 2)
@@ -119,6 +128,59 @@ class QuarantineSafetyTests(unittest.TestCase):
         self.assertNotIn("provider-a", report)
         self.assertNotIn("provider-b", report)
         self.assertNotIn("synthetic provider detail", report)
+
+    def test_changed_selection_and_empty_retained_set_fail_before_provider_calls(self):
+        with self.assertRaisesRegex(QuarantineError, "retained_refs_required"):
+            CandidateSelection(("message-000001",), (), "0.1", "selection-1")
+        with self.assertRaisesRegex(QuarantineError, "candidate_conflicts_with_retained_copy"):
+            CandidateSelection(
+                ("message-000001",), ("message-000001",), "0.1", "selection-1"
+            )
+
+        old = selection("message-000001")
+        changed_selections = (
+            CandidateSelection(
+                ("message-000001", "message-000002"),
+                ("retained-000001",), "0.1", "selection-1",
+            ),
+            CandidateSelection(
+                ("message-000001",), ("retained-000002",), "0.1", "selection-1"
+            ),
+            CandidateSelection(
+                ("message-000001",), ("retained-000001",), "0.2", "selection-1"
+            ),
+            CandidateSelection(
+                ("message-000001",), ("retained-000001",), "0.1", "selection-2"
+            ),
+        )
+        for current in changed_selections:
+            with self.subTest(current=current):
+                spy = RequestSpy()
+                with self.assertRaisesRegex(QuarantineError, "candidate_selection_changed"):
+                    adapter(spy, candidates=current).apply(
+                        approval(old, "message-000001")
+                    )
+                self.assertEqual(spy.calls, [])
+
+    def test_scheduled_audit_is_report_only_and_approval_is_one_shot(self):
+        candidates = selection("message-000001")
+        approved = approval(candidates, "message-000001")
+
+        scheduled_spy = RequestSpy()
+        with self.assertRaisesRegex(QuarantineError, "scheduled_audit_is_report_only"):
+            adapter(
+                scheduled_spy, candidates=candidates, audit_mode="scheduled"
+            ).apply(approved)
+        self.assertEqual(scheduled_spy.calls, [])
+
+        interactive_spy = RequestSpy()
+        target = adapter(interactive_spy, candidates=candidates)
+        target.apply(approved)
+        with self.assertRaisesRegex(QuarantineError, "quarantine_approval_already_used"):
+            target.apply(approved)
+        self.assertEqual(
+            [name for name, _ in interactive_spy.calls].count("messages.modify"), 1
+        )
 
     def test_scope_policy_allows_only_modify_and_justified_identity_scopes(self):
         self.assertEqual(QUARANTINE_IDENTITY_SCOPES, frozenset(("openid", "email")))

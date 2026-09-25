@@ -172,10 +172,6 @@ class GmailQuarantineAdapter:
         if self._approval_consumed:
             raise QuarantineError("quarantine_approval_already_used")
 
-        # A current approval is one-shot even if lookup or mutation later fails;
-        # an uncertain provider outcome must never be replayed automatically.
-        self._approval_consumed = True
-
         label_id = self._find_label()
         missing = [ref for ref in approval.approved_refs if ref not in self._provider_ids_by_ref]
         if missing:
@@ -184,6 +180,11 @@ class GmailQuarantineAdapter:
 
         outcomes: list[QuarantineOutcome] = []
         for ref in approval.approved_refs:
+            if not self._approval_consumed:
+                # Consume immediately before the first mutation attempt. Once a
+                # provider call begins, its outcome may be uncertain and replay
+                # must remain denied even when that call raises.
+                self._approval_consumed = True
             try:
                 response = self._modify_message(
                     user_id="me",

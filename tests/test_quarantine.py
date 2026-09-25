@@ -100,19 +100,51 @@ class QuarantineSafetyTests(unittest.TestCase):
             with self.subTest(labels=labels):
                 spy = RequestSpy(labels=labels)
                 candidates = selection("message-000001")
+                approved = approval(candidates, "message-000001")
+                target = adapter(spy, candidates=candidates)
                 with self.assertRaisesRegex(QuarantineError, "quarentine_label_not_found"):
-                    adapter(spy, candidates=candidates).apply(
-                        approval(candidates, "message-000001")
-                    )
+                    target.apply(approved)
                 self.assertEqual([name for name, _ in spy.calls], ["labels.list"])
+
+                spy.labels = [
+                    {"id": "Label_private", "name": "quarentine", "type": "user"}
+                ]
+                result = target.apply(approved)
+                self.assertEqual(result.quarantined_refs, ("message-000001",))
+                self.assertEqual(
+                    [name for name, _ in spy.calls],
+                    ["labels.list", "labels.list", "messages.modify"],
+                )
 
     def test_all_refs_resolve_before_first_mutation(self):
         spy = RequestSpy()
         candidates = selection("message-000001", "message-000002")
         target = adapter(spy, refs=("message-000001",), candidates=candidates)
-        with self.assertRaisesRegex(QuarantineError, "approved_reference_unavailable"):
-            target.apply(approval(candidates, "message-000001", "message-000002"))
-        self.assertEqual([name for name, _ in spy.calls], ["labels.list"])
+        approved = approval(candidates, "message-000001", "message-000002")
+        for _ in range(2):
+            with self.assertRaisesRegex(QuarantineError, "approved_reference_unavailable"):
+                target.apply(approved)
+        self.assertEqual(
+            [name for name, _ in spy.calls], ["labels.list", "labels.list"]
+        )
+
+    def test_provider_attempt_consumes_approval_even_when_outcome_is_uncertain(self):
+        spy = RequestSpy(fail_ids=("provider-a",))
+        candidates = selection("message-000001")
+        approved = approval(candidates, "message-000001")
+        target = adapter(spy, candidates=candidates)
+
+        result = target.apply(approved)
+
+        self.assertEqual(result.failures[0].reason, "label_application_failed")
+        self.assertEqual(
+            [name for name, _ in spy.calls], ["labels.list", "messages.modify"]
+        )
+        with self.assertRaisesRegex(QuarantineError, "quarantine_approval_already_used"):
+            target.apply(approved)
+        self.assertEqual(
+            [name for name, _ in spy.calls], ["labels.list", "messages.modify"]
+        )
 
     def test_partial_failures_are_explicit_not_retried_and_hide_provider_ids(self):
         spy = RequestSpy(fail_ids=("provider-a",))

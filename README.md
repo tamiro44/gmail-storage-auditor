@@ -161,6 +161,11 @@ This optional action requires a distinct credential containing exactly one Gmail
 
 Quarantine is reversible human-review state, not deletion authorization. It does not delete, trash, archive, or recover storage. A future deletion workflow must require presence in `quarentine` as a necessary condition and must still obtain its own fresh, explicit authorization; this feature implements no deletion path. Automated tests use fabricated calls and request spies only. Any real-account smoke test must be explicitly user-initiated and limited to a controlled test message.
 
+The final action boundary also requires the exact active policy selection, a
+nonempty disjoint retained-copy set, the current interaction, interactive audit
+mode, and a one-shot approval. Scheduled or recurring audits are always
+report-only. See `docs/safety.md` for the threat and failure model.
+
 ## Standalone local HTML report
 
 Append `--html <path>` to the existing Gmail CLI command to create a self-contained HTML inventory. Add `--duplicates` to include the existing duplicate-analysis results as well:
@@ -239,7 +244,7 @@ retained-copy and protection gates.
 - `gmail_storage_auditor/` — normalized read-only inventory, synthetic source, and text report
 - `requirements-gmail.txt` — optional bounded dependencies for the read-only Gmail connector
 - `tests/` — synthetic inventory and boundary tests
-- `docs/safety.md` — planned safety gates and approval model documentation
+- `docs/safety.md` — enforced safety gates, approval contract, and failure model
 - `docs/agent-board.md` — planned board/workflow documentation
 
 ## Status

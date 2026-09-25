@@ -59,11 +59,15 @@ class CandidateSelection:
     """Exact refs already admitted by the project's candidate/safety policy."""
 
     refs: tuple[str, ...]
+    retained_refs: tuple[str, ...]
     policy_version: str
     selection_revision: str
 
     def __post_init__(self) -> None:
         _refs(self.refs, "candidate_refs")
+        _refs(self.retained_refs, "retained_refs")
+        if set(self.refs) & set(self.retained_refs):
+            raise QuarantineError("candidate_conflicts_with_retained_copy")
         for value, field in (
             (self.policy_version, "policy_version"),
             (self.selection_revision, "selection_revision"),
@@ -128,6 +132,8 @@ class GmailQuarantineAdapter:
         provider_ids_by_ref: Mapping[str, str],
         granted_scopes: Iterable[str],
         interaction_ref: str,
+        active_selection: CandidateSelection,
+        audit_mode: str = "interactive",
     ) -> None:
         validate_quarantine_scopes(granted_scopes)
         if not callable(list_labels) or not callable(modify_message):
@@ -142,16 +148,29 @@ class GmailQuarantineAdapter:
             raise QuarantineError("private_reference_map_invalid")
         if not isinstance(interaction_ref, str) or not interaction_ref.strip():
             raise QuarantineError("interaction_ref_required")
+        if not isinstance(active_selection, CandidateSelection):
+            raise QuarantineError("active_candidate_selection_required")
+        if audit_mode not in ("interactive", "scheduled"):
+            raise QuarantineError("audit_mode_invalid")
         self._list_labels = list_labels
         self._modify_message = modify_message
         self._provider_ids_by_ref = dict(provider_ids_by_ref)
         self._interaction_ref = interaction_ref
+        self._active_selection = active_selection
+        self._audit_mode = audit_mode
+        self._approval_consumed = False
 
     def apply(self, approval: QuarantineApproval) -> QuarantineResult:
         if not isinstance(approval, QuarantineApproval):
             raise QuarantineError("explicit_quarantine_approval_required")
+        if self._audit_mode != "interactive":
+            raise QuarantineError("scheduled_audit_is_report_only")
         if approval.interaction_ref != self._interaction_ref:
             raise QuarantineError("quarantine_approval_not_current")
+        if approval.candidate_selection != self._active_selection:
+            raise QuarantineError("candidate_selection_changed")
+        if self._approval_consumed:
+            raise QuarantineError("quarantine_approval_already_used")
 
         label_id = self._find_label()
         missing = [ref for ref in approval.approved_refs if ref not in self._provider_ids_by_ref]
@@ -161,6 +180,11 @@ class GmailQuarantineAdapter:
 
         outcomes: list[QuarantineOutcome] = []
         for ref in approval.approved_refs:
+            if not self._approval_consumed:
+                # Consume immediately before the first mutation attempt. Once a
+                # provider call begins, its outcome may be uncertain and replay
+                # must remain denied even when that call raises.
+                self._approval_consumed = True
             try:
                 response = self._modify_message(
                     user_id="me",
@@ -197,7 +221,8 @@ class GmailQuarantineAdapter:
 
 
 def build_google_quarantine_adapter(
-    *, credentials: Any, provider_ids_by_ref: Mapping[str, str], interaction_ref: str
+    *, credentials: Any, provider_ids_by_ref: Mapping[str, str], interaction_ref: str,
+    active_selection: CandidateSelection, audit_mode: str = "interactive",
 ) -> GmailQuarantineAdapter:
     """Build a modify-only boundary; no delete/trash/archive operation is exposed."""
     scopes = _credential_scopes(credentials)
@@ -232,6 +257,8 @@ def build_google_quarantine_adapter(
         provider_ids_by_ref=provider_ids_by_ref,
         granted_scopes=scopes,
         interaction_ref=interaction_ref,
+        active_selection=active_selection,
+        audit_mode=audit_mode,
     )
 
 

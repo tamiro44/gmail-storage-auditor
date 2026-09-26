@@ -91,6 +91,17 @@ class GmailReader:
         """Opaque-reference review links for messages already read this run."""
         return MappingProxyType(dict(self._review_urls))
 
+    def _quarantine_reference_map(self) -> Mapping[str, str]:
+        """Return the transient inverse ID map for the guarded local workflow.
+
+        Provider identifiers never enter domain records or rendered output.  This
+        deliberately private bridge exists only so the quarantine adapter can
+        resolve exact opaque references after inventory has completed.
+        """
+        return MappingProxyType({
+            ref: provider_id for provider_id, ref in self._message_refs.items()
+        })
+
     def read_page(self, scope: Scope, cursor: str | None) -> Page:
         if not isinstance(scope, Scope) or scope.synthetic or scope.whole_mailbox:
             raise InventoryError("Invalid Gmail scope: expected a targeted real-data scope.")

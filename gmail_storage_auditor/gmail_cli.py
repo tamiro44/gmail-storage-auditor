@@ -106,6 +106,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--token", required=True, help="OAuth token JSON outside this repository")
     parser.add_argument("--duplicates", action="store_true", help="Append analysis-only duplicate metadata report")
     parser.add_argument("--html", metavar="PATH", help="Create a standalone HTML report outside the repository; path must not exist")
+    parser.add_argument(
+        "--gmail-review-links", action="store_true",
+        help="Include validated Gmail web review links in the HTML report",
+    )
     return parser
 
 
@@ -116,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.max_pages < 1:
         print("Gmail inventory failed: gmail_page_limit_invalid", file=sys.stderr)
+        return 2
+    if args.gmail_review_links and args.html is None:
+        print("Gmail inventory failed: gmail_review_links_require_html", file=sys.stderr)
         return 2
     try:
         html_path = None
@@ -144,7 +151,13 @@ def main(argv: list[str] | None = None) -> int:
         report = render_duplicates(analysis) if analysis is not None else render_inventory(inventory)
         print(report, end="")
         if html_path is not None:
-            html = render_html(analysis if analysis is not None else inventory)
+            html = render_html(
+                analysis if analysis is not None else inventory,
+                review_urls=(
+                    getattr(reader, "review_urls", None)
+                    if args.gmail_review_links else None
+                ),
+            )
             try:
                 with html_path.open("x", encoding="utf-8", newline="\n") as output:
                     output.write(html)

@@ -178,6 +178,15 @@ Open the resulting file directly in a browser. It includes summary metrics, cove
 
 The file contains inline CSS, no JavaScript, no external resources, and a restrictive content security policy. All supplied text is HTML-escaped. Rendering makes no network calls and adds no server, browser launch, cache, or auxiliary files. The Gmail CLI still uses its existing read-only discovery and authentication flow; HTML export adds no Gmail operations or changes to analysis.
 
+Append `--gmail-review-links` with `--html` to explicitly include **Open in
+Gmail** links beside opaque run-local message references. They are omitted by
+default. The connector forms a route only from an already returned, conservatively
+validated hexadecimal message ID; invalid or unavailable IDs produce no link.
+The raw provider ID is never visible link text. Review URLs remain separate from
+`Inventory` and `DuplicateAnalysis`, are used only by the local HTML presentation,
+and trigger no additional Gmail request. Opening one is a human browser action; it
+does not authorize or perform a mailbox mutation.
+
 The destination must be a new file in an existing directory outside the checkout, consistent with the repository privacy rule. Existing files are never overwritten. Errors use fixed diagnostics without exposing output paths. A disk/write failure may leave an incomplete file at the requested destination; no temporary report file is created. Real reports can contain private filenames and observations and must not be committed or shared in logs.
 
 For already collected results, `gmail_storage_auditor.html_report.render_html(result)` accepts either an `Inventory` or a `DuplicateAnalysis` and returns an HTML string without I/O. The caller controls whether to save that string. Synthetic snapshots live in `tests/snapshots/`; the full regression command above checks them byte-for-byte after UTF-8 decoding.

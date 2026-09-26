@@ -35,6 +35,7 @@ from .scoring import CleanupPlan, score_cleanup
 
 MAX_QUARANTINE_PAGES = 3
 MAX_QUARANTINE_CANDIDATES = 10
+MIN_QUARANTINE_SAVINGS_BYTES = 10 * 1024 * 1024
 CONFIRMATION_TEXT = "APPLY QUARENTINE LABEL"
 _BROAD_LABELS = frozenset((
     "all", "all_mail", "anywhere", "inbox", "sent", "spam", "starred",
@@ -174,9 +175,21 @@ def verify_same_account(*, readonly_credentials: Any, modify_credentials: Any) -
 
 
 def _candidate_selection(plan: CleanupPlan, limit: int) -> CandidateSelection:
+    source_supported_copies = {
+        ref
+        for cluster in plan.duplicates.clusters
+        if cluster.authority == "source_supported"
+        for ref in cluster.members
+        if ref != cluster.retained_ref
+    }
     eligible = tuple(
         candidate.message_ref for candidate in plan.candidates
-        if candidate.recommendation in ("safe", "review", "aggressive")
+        if candidate.recommendation == "review"
+        and candidate.risk_tier == "unknown"
+        and candidate.message_ref in source_supported_copies
+        and candidate.estimated_savings_bytes is not None
+        and candidate.estimated_savings_bytes >= MIN_QUARANTINE_SAVINGS_BYTES
+        and candidate.retained_copy_refs
     )[:limit]
     if not eligible:
         raise QuarantineError("no_eligible_recommended_candidates")

@@ -164,9 +164,12 @@ This optional action requires a distinct credential containing exactly one Gmail
 The normal `gmail_cli` command remains read-only. Quarantine is a separate,
 interactive command with deliberately small hard limits: at most three Gmail
 pages and ten displayed candidates. It first completes the bounded read-only
-inventory and prints the full cleanup recommendation report. Only candidates
-recommended as Safe, Review, or Aggressive by that exact policy run are offered;
-Keep and retained-copy messages cannot be selected. An incomplete scan or a run
+inventory and prints the full cleanup recommendation report. Quarantine is a
+reversible human-review queue, not a deletion recommendation. Only Review
+candidates with non-high risk, source-supported retained-copy evidence, known
+estimated savings of at least 10 MiB, and a retained copy are offered. Protected,
+sentimental, and all other high-risk items remain blocked, as do Keep,
+unknown-size, unresolved-duplicate, and retained-copy messages. An incomplete scan or a run
 with no eligible candidates stops without loading modify credentials. The page
 limit is only a safety ceiling: it never makes a partial inventory actionable.
 If the query reaches that ceiling, the command reports

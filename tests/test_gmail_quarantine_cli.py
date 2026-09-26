@@ -15,6 +15,8 @@ from gmail_storage_auditor.duplicates import analyze_duplicates
 from gmail_storage_auditor.gmail import GMAIL_READONLY_SCOPE, GmailConnectorError, GmailReader
 from gmail_storage_auditor.gmail_quarantine_cli import (
     CONFIRMATION_TEXT,
+    MIN_QUARANTINE_SAVINGS_BYTES,
+    _candidate_selection,
     _parser,
     main,
     run_workflow,
@@ -35,7 +37,7 @@ def plan_fixture():
     messages = (
         Message("message-000001", 1000, AS_OF, "thread-000001", "received", attachment, True,
                 (Hint("original", "synthetic fixture"),)),
-        Message("message-000002", 800, AS_OF, "thread-000001", "sent", attachment, True,
+        Message("message-000002", 12 * 1024 * 1024, AS_OF, "thread-000001", "sent", attachment, True,
                 (Hint("forwarded", "synthetic fixture"),)),
     )
     inventory = Inventory(Scope("fabricated", synthetic=True), AS_OF, messages, True, None, 1)
@@ -118,6 +120,29 @@ class GmailQuarantineCliTests(unittest.TestCase):
         confirmation_prompt = prompt_texts[-1]
         self.assertIn("existing `quarentine` label", confirmation_prompt)
         self.assertIn("does not delete messages or recover storage", confirmation_prompt)
+
+    def test_only_bounded_non_high_high_savings_review_is_eligible(self):
+        plan = plan_fixture()
+        selection = _candidate_selection(plan, 1)
+        self.assertEqual(selection.refs, ("message-000002",))
+        self.assertEqual(MIN_QUARANTINE_SAVINGS_BYTES, 10 * 1024 * 1024)
+
+        for changes in (
+            {"risk_tier": "high"},
+            {"recommendation": "keep"},
+            {"estimated_savings_bytes": MIN_QUARANTINE_SAVINGS_BYTES - 1},
+            {"estimated_savings_bytes": None},
+        ):
+            with self.subTest(changes=changes):
+                candidates = tuple(
+                    replace(candidate, **changes)
+                    if candidate.message_ref == "message-000002" else candidate
+                    for candidate in plan.candidates
+                )
+                with self.assertRaisesRegex(
+                    QuarantineError, "no_eligible_recommended_candidates"
+                ):
+                    _candidate_selection(replace(plan, candidates=candidates), 1)
 
     def test_cancel_eof_empty_unknown_or_wrong_confirmation_never_loads_modify_credentials(self):
         plan = plan_fixture()

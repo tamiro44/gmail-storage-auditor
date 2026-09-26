@@ -172,6 +172,9 @@ with no eligible candidates stops without loading modify credentials.
 Prepare a second desktop OAuth client/token location outside the checkout. It
 must be distinct from both read-only paths; the command requests only
 `gmail.modify` for that token and never upgrades or reuses the read-only token.
+After confirmation, it compares the two accounts through transient Gmail profile
+lookups and fails closed if they differ or cannot be verified; account identifiers
+are never printed or retained.
 Create the Gmail label named exactly `quarentine` yourself before the run. The
 command will not create it.
 

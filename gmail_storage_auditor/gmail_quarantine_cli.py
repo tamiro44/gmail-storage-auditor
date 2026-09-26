@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
+import hmac
 import json
 import os
 from pathlib import Path
@@ -124,6 +125,28 @@ def load_modify_credentials(*, client_secrets_path: str, token_path: str) -> Any
     return credentials
 
 
+def verify_same_account(*, readonly_credentials: Any, modify_credentials: Any) -> None:
+    """Compare account identities transiently without returning or logging them."""
+    try:
+        from googleapiclient.discovery import build
+
+        identities = []
+        for credentials in (readonly_credentials, modify_credentials):
+            response = build(
+                "gmail", "v1", credentials=credentials, cache_discovery=False
+            ).users().getProfile(
+                userId="me", fields="emailAddress"
+            ).execute(num_retries=0)
+            identity = response.get("emailAddress") if isinstance(response, Mapping) else None
+            if not isinstance(identity, str) or not identity.strip():
+                raise TypeError
+            identities.append(identity.strip().casefold())
+    except Exception:
+        raise QuarantineError("gmail_account_verification_failed") from None
+    if not hmac.compare_digest(*identities):
+        raise QuarantineError("gmail_account_mismatch")
+
+
 def _candidate_selection(plan: CleanupPlan, limit: int) -> CandidateSelection:
     eligible = tuple(
         candidate.message_ref for candidate in plan.candidates
@@ -183,6 +206,10 @@ def run_workflow(
     modify_credentials = load_modify_credentials(
         client_secrets_path=args.modify_client_secrets,
         token_path=args.modify_token,
+    )
+    verify_same_account(
+        readonly_credentials=readonly_credentials,
+        modify_credentials=modify_credentials,
     )
     if not isinstance(reader, GmailReader):
         raise QuarantineError("gmail_reader_state_unavailable")

@@ -4,7 +4,9 @@ from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
+import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import Mock, patch
 
@@ -15,6 +17,7 @@ from gmail_storage_auditor.gmail_quarantine_cli import (
     _parser,
     main,
     run_workflow,
+    verify_same_account,
 )
 from gmail_storage_auditor.inventory import Attachment, Hint, Inventory, Message, Scope
 from gmail_storage_auditor.quarantine import GMAIL_MODIFY_SCOPE, QuarantineError, QuarantineResult, QuarantineOutcome
@@ -86,6 +89,8 @@ class GmailQuarantineCliTests(unittest.TestCase):
                   side_effect=lambda *a, **k: events.append("inventory") or plan.duplicates.inventory))
             stack.enter_context(patch("gmail_storage_auditor.gmail_quarantine_cli.load_modify_credentials",
                   side_effect=lambda **_: events.append("modify_credentials") or object()))
+            stack.enter_context(patch("gmail_storage_auditor.gmail_quarantine_cli.verify_same_account",
+                  side_effect=lambda **_: events.append("account_binding")))
             stack.enter_context(patch("gmail_storage_auditor.gmail_quarantine_cli.build_google_quarantine_adapter",
                   side_effect=lambda **_: events.append("adapter") or adapter))
             output = StringIO()
@@ -102,7 +107,8 @@ class GmailQuarantineCliTests(unittest.TestCase):
         self.assertLess(events.index("inventory"), events.index("selection"))
         self.assertLess(events.index("selection"), events.index("confirmation"))
         self.assertLess(events.index("confirmation"), events.index("modify_credentials"))
-        self.assertLess(events.index("modify_credentials"), events.index("adapter"))
+        self.assertLess(events.index("modify_credentials"), events.index("account_binding"))
+        self.assertLess(events.index("account_binding"), events.index("adapter"))
         self.assertIn("## Review", output.getvalue())
         self.assertIn("Eligible quarantine candidates: message-000002", output.getvalue())
         self.assertNotIn("provider-selected", output.getvalue())
@@ -193,6 +199,100 @@ class GmailQuarantineCliTests(unittest.TestCase):
     def test_modify_loader_requests_only_modify_scope(self):
         from gmail_storage_auditor.quarantine import GMAIL_QUARANTINE_SCOPES
         self.assertEqual(GMAIL_QUARANTINE_SCOPES, (GMAIL_MODIFY_SCOPE,))
+
+    def test_wrong_or_unverifiable_account_fails_before_adapter(self):
+        plan = plan_fixture()
+        for reason in ("gmail_account_mismatch", "gmail_account_verification_failed"):
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                stack.enter_context(patch(
+                    "gmail_storage_auditor.gmail_quarantine_cli.load_credentials",
+                    return_value=object(),
+                ))
+                stack.enter_context(patch(
+                    "gmail_storage_auditor.gmail_quarantine_cli.build_google_reader",
+                    return_value=self.reader(),
+                ))
+                stack.enter_context(patch(
+                    "gmail_storage_auditor.gmail_quarantine_cli.collect_inventory",
+                    return_value=plan.duplicates.inventory,
+                ))
+                stack.enter_context(patch(
+                    "gmail_storage_auditor.gmail_quarantine_cli.load_modify_credentials",
+                    return_value=object(),
+                ))
+                stack.enter_context(patch(
+                    "gmail_storage_auditor.gmail_quarantine_cli.verify_same_account",
+                    side_effect=QuarantineError(reason),
+                ))
+                adapter = stack.enter_context(patch(
+                    "gmail_storage_auditor.gmail_quarantine_cli.build_google_quarantine_adapter"
+                ))
+                prompts = iter(("message-000002", CONFIRMATION_TEXT))
+                with redirect_stdout(StringIO()), self.assertRaisesRegex(
+                    QuarantineError, reason
+                ):
+                    run_workflow(
+                        self.args(directory), prompt=lambda _: next(prompts),
+                        now=lambda: AS_OF,
+                    )
+                adapter.assert_not_called()
+
+    def test_account_binding_uses_profile_only_and_never_discloses_identity(self):
+        calls = []
+
+        class Request:
+            def __init__(self, identity):
+                self.identity = identity
+
+            def execute(self, **kwargs):
+                calls.append(("execute", kwargs))
+                return {"emailAddress": self.identity}
+
+        class Users:
+            def __init__(self, identity):
+                self.identity = identity
+
+            def getProfile(self, **kwargs):
+                calls.append(("users.getProfile", kwargs))
+                return Request(self.identity)
+
+        class Service:
+            def __init__(self, identity):
+                self.identity = identity
+
+            def users(self):
+                return Users(self.identity)
+
+        identities = {"readonly": "Synthetic.User@example.invalid",
+                      "modify": "synthetic.user@EXAMPLE.INVALID"}
+        discovery = types.ModuleType("googleapiclient.discovery")
+
+        def build(*args, **kwargs):
+            calls.append(("build", (args, kwargs)))
+            return Service(identities[kwargs["credentials"]])
+
+        discovery.build = build
+        package = types.ModuleType("googleapiclient")
+        package.discovery = discovery
+        with patch.dict(sys.modules, {
+            "googleapiclient": package,
+            "googleapiclient.discovery": discovery,
+        }):
+            verify_same_account(
+                readonly_credentials="readonly", modify_credentials="modify"
+            )
+            identities["modify"] = CANARY
+            with self.assertRaisesRegex(QuarantineError, "gmail_account_mismatch") as raised:
+                verify_same_account(
+                    readonly_credentials="readonly", modify_credentials="modify"
+                )
+
+        profile_requests = [value for name, value in calls if name == "users.getProfile"]
+        self.assertTrue(profile_requests)
+        self.assertTrue(all(request == {
+            "userId": "me", "fields": "emailAddress"
+        } for request in profile_requests))
+        self.assertNotIn(CANARY, str(raised.exception))
 
 
 if __name__ == "__main__":

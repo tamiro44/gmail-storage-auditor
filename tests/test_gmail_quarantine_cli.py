@@ -58,7 +58,7 @@ class GmailQuarantineCliTests(unittest.TestCase):
     def args(self, directory):
         base = Path(directory)
         values = [
-            "--query", "label:gsa-quarantine-smoke larger:10M", "--max-pages", "1",
+            "--query", "larger:10M older:1y", "--max-pages", "1",
             "--candidate-limit", "2", "--client-secrets", str(base / "read-client.json"),
             "--token", str(base / "read-token.json"),
             "--modify-client-secrets", str(base / "modify-client.json"),
@@ -68,7 +68,7 @@ class GmailQuarantineCliTests(unittest.TestCase):
 
     def reader(self):
         reader = GmailReader(
-            query="label:gsa-quarantine-smoke larger:10M", list_messages=lambda **_: {},
+            query="larger:10M older:1y", list_messages=lambda **_: {},
             get_message=lambda **_: {}, granted_scopes=(GMAIL_READONLY_SCOPE,),
         )
         reader._message_refs = {
@@ -252,11 +252,16 @@ class GmailQuarantineCliTests(unittest.TestCase):
             workflow.assert_not_called()
 
         with patch("gmail_storage_auditor.gmail_quarantine_cli.run_workflow") as workflow:
-            for query in (
-                "larger:10M older:1y",
-                "label:inbox larger:10M",
-                "label:gsa-quarantine-smoke",
-                "label:gsa-quarantine-smoke {larger:1M smaller:2M}",
+            for query, reason in (
+                ("", "gmail_query_required"),
+                ("larger:10M", "gmail_query_not_narrow_enough"),
+                ("larger:1M older:1d", "gmail_query_not_narrow_enough"),
+                ("older:1y", "gmail_query_not_narrow_enough"),
+                ("label:inbox larger:10M", "gmail_query_not_narrow_enough"),
+                ("label:gsa-quarantine-smoke", "gmail_query_not_narrow_enough"),
+                ("label:gsa-quarantine-smoke {larger:1M smaller:2M}", "gmail_query_not_narrow_enough"),
+                ("-larger:10M older:1y", "gmail_query_not_narrow_enough"),
+                ("larger:10M OR older:1y", "gmail_query_not_narrow_enough"),
             ):
                 with self.subTest(query=query), tempfile.TemporaryDirectory() as directory:
                     argv = vars(self.args(directory))
@@ -269,9 +274,24 @@ class GmailQuarantineCliTests(unittest.TestCase):
                         self.assertEqual(main(command), 2)
                     self.assertEqual(
                         stderr.getvalue(),
-                        "Gmail quarantine failed: gmail_query_not_narrow_enough\n",
+                        f"Gmail quarantine failed: {reason}\n",
                     )
             workflow.assert_not_called()
+
+        with patch("gmail_storage_auditor.gmail_quarantine_cli.run_workflow", return_value=0) as workflow:
+            for query in (
+                "larger:10M older:1y",
+                "label:gsa-quarantine-smoke larger:10M",
+                "rfc822msgid:synthetic-message@example.invalid",
+            ):
+                with self.subTest(query=query), tempfile.TemporaryDirectory() as directory:
+                    argv = vars(self.args(directory))
+                    argv["query"] = query
+                    command = []
+                    for key, item in argv.items():
+                        command.extend(("--" + key.replace("_", "-"), str(item)))
+                    self.assertEqual(main(command), 0)
+            self.assertEqual(workflow.call_count, 3)
 
         with tempfile.TemporaryDirectory() as directory:
             args = self.args(directory)

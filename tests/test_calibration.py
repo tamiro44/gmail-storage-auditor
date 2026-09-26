@@ -71,12 +71,58 @@ class CalibrationTests(unittest.TestCase):
             "recurring_rejection_pattern", "possible_overprotection",
         }.issubset(codes))
 
-    def test_small_cohort_is_limited_except_for_policy_version_review(self):
-        small = (evaluation(1),)
-        milestone = evaluate_calibration("0.1", "manual_milestone", small)
-        version_change = evaluate_calibration("0.2", "policy_version_change", small)
-        self.assertIn("insufficient_sample", {item.code for item in milestone.judgments})
-        self.assertNotIn("insufficient_sample", {item.code for item in version_change.judgments})
+    def test_small_manual_and_fixture_cohorts_measure_drift_without_judging_it(self):
+        small = (
+            evaluation(
+                1, actual_recommendation="aggressive",
+                actual_confidence_percent=40, estimated_bytes=1_000_000, score=100,
+            ),
+            evaluation(2, score=1),
+        )
+        ordinary_codes = {
+            "recommendation_drift", "possible_size_dominance", "confidence_drift",
+        }
+        for trigger in ("manual_milestone", "fixture_suite_change"):
+            with self.subTest(trigger=trigger):
+                report = evaluate_calibration("0.1", trigger, small)
+                signals = {item.name: item.value for item in report.signals}
+                self.assertEqual(signals["recommendation_mismatches"], 1)
+                self.assertEqual(signals["confidence_mismatches"], 1)
+                self.assertGreaterEqual(
+                    signals["largest_message_score_share_percent"], 70
+                )
+                codes = {item.code for item in report.judgments}
+                self.assertEqual(codes, {"insufficient_sample"})
+                self.assertTrue(ordinary_codes.isdisjoint(codes))
+
+    def test_small_cohort_safety_violation_remains_zero_tolerance(self):
+        for trigger in ("manual_milestone", "fixture_suite_change"):
+            with self.subTest(trigger=trigger):
+                report = evaluate_calibration(
+                    "0.1", trigger,
+                    (evaluation(1, retained_copy_preserved=False),),
+                )
+                codes = {item.code for item in report.judgments}
+                self.assertEqual(
+                    codes, {"insufficient_sample", "safety_regression"}
+                )
+
+    def test_small_policy_version_cohort_keeps_normal_judgments_enabled(self):
+        report = evaluate_calibration(
+            "0.2", "policy_version_change",
+            (
+                evaluation(
+                    1, actual_recommendation="aggressive",
+                    actual_confidence_percent=40, estimated_bytes=1_000_000, score=100,
+                ),
+                evaluation(2, score=1),
+            ),
+        )
+        codes = {item.code for item in report.judgments}
+        self.assertNotIn("insufficient_sample", codes)
+        self.assertTrue({
+            "recommendation_drift", "possible_size_dominance", "confidence_drift",
+        }.issubset(codes))
 
     def test_proposals_require_rationale_tests_and_cannot_weaken_safety(self):
         proposal = PolicyChangeProposal(

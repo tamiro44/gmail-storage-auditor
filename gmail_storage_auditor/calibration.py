@@ -232,7 +232,10 @@ def evaluate_calibration(
     )
 
     judgments = []
-    if total < config.minimum_evaluations and trigger != "policy_version_change":
+    ordinary_judgments_enabled = (
+        total >= config.minimum_evaluations or trigger == "policy_version_change"
+    )
+    if not ordinary_judgments_enabled:
         judgments.append(CalibrationJudgment(
             "insufficient_sample", "notice",
             "The fixture cohort is below the configured milestone; avoid policy conclusions.",
@@ -242,28 +245,29 @@ def evaluate_calibration(
             "safety_regression", "critical",
             "Safety signals are nonzero; investigate fixtures and preserve existing gates.",
         ))
-    if _percent(mismatches, total) >= config.mismatch_rate_percent:
+    if (ordinary_judgments_enabled
+            and _percent(mismatches, total) >= config.mismatch_rate_percent):
         judgments.append(CalibrationJudgment(
             "recommendation_drift", "review",
             "Recommendation mismatch rate reached the configured investigation threshold.",
         ))
-    if unexpected_keep:
+    if ordinary_judgments_enabled and unexpected_keep:
         judgments.append(CalibrationJudgment(
             "possible_overprotection", "review",
             "Unprotected fixtures were kept contrary to expectations; inspect category breadth.",
         ))
-    if (largest_score_share is not None
+    if (ordinary_judgments_enabled and largest_score_share is not None
             and largest_score_share >= config.size_dominance_percent):
         judgments.append(CalibrationJudgment(
             "possible_size_dominance", "review",
             "The largest fixture contributes a high share of score; inspect component balance.",
         ))
-    if confidence_mismatches:
+    if ordinary_judgments_enabled and confidence_mismatches:
         judgments.append(CalibrationJudgment(
             "confidence_drift", "review",
             "One or more confidence values exceeded the configured tolerance.",
         ))
-    if recurring_rejections:
+    if ordinary_judgments_enabled and recurring_rejections:
         judgments.append(CalibrationJudgment(
             "recurring_rejection_pattern", "review",
             "A sufficiently large synthetic outcome cohort has repeated rejections.",

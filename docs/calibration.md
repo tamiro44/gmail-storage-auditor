@@ -15,7 +15,10 @@ Run a retrospective only when one of these explicit triggers occurs:
 
 Do not run continuously or tune policy after every result. Small cohorts are
 reported as insufficient evidence unless the purpose is reviewing a new policy
-version.
+version. For manual milestones and fixture-suite changes, their signals remain
+visible but ordinary threshold-based judgments are suppressed until the minimum
+evaluation count is reached. Safety regressions remain zero tolerance at every
+cohort size.
 
 ## Accepted inputs
 

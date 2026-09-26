@@ -37,15 +37,20 @@ MAX_QUARANTINE_PAGES = 3
 MAX_QUARANTINE_CANDIDATES = 10
 MIN_QUARANTINE_SAVINGS_BYTES = 10 * 1024 * 1024
 CONFIRMATION_TEXT = "APPLY QUARENTINE LABEL"
-_BROAD_LABELS = frozenset((
+_SYSTEM_LABELS = frozenset((
     "all", "all_mail", "anywhere", "inbox", "sent", "spam", "starred",
     "trash", "unread",
 ))
-_SECONDARY_BOUND = re.compile(
-    r"(?:^|\s)(?:after|before|filename|larger|newer|newer_than|older|"
-    r"older_than|rfc822msgid|smaller):[^\s]+",
+_BOUND_TERM = re.compile(
+    r"(?P<operator>after|before|filename|label|larger|newer|newer_than|older|"
+    r"older_than|rfc822msgid|smaller):(?P<value>[^\s]+)\Z",
     flags=re.ASCII | re.IGNORECASE,
 )
+_DATE_OR_AGE = re.compile(
+    r"(?:\d+[dmy]|\d{4}(?:/\d{1,2}/\d{1,2}|-\d{1,2}-\d{1,2})|\d{9,})\Z",
+    flags=re.ASCII | re.IGNORECASE,
+)
+_SIZE = re.compile(r"(?P<number>\d+)(?P<unit>[kmg])?\Z", re.ASCII | re.IGNORECASE)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -75,18 +80,51 @@ def _validate_credential_paths(args: argparse.Namespace) -> None:
 
 
 def _validate_bounded_query(query: object) -> None:
-    """Require a dedicated label plus another narrowing predicate."""
+    """Require a small, positive Gmail scope before any authentication."""
     if not isinstance(query, str) or not query.strip():
         raise QuarantineError("gmail_query_required")
-    labels = re.findall(
-        r"(?:^|\s)label:([A-Za-z0-9_-]{1,64})(?=\s|$)", query,
-        flags=re.ASCII | re.IGNORECASE,
-    )
-    custom_labels = tuple(
-        label for label in labels if label.casefold() not in _BROAD_LABELS
-    )
-    if (not custom_labels or _SECONDARY_BOUND.search(query) is None
-            or any(character in query for character in "\r\n{}")):
+    if (any(character in query for character in "\r\n{}()\"'")
+            or re.search(r"(?:^|\s)OR(?:\s|$)", query, re.IGNORECASE)):
+        raise QuarantineError("gmail_query_not_narrow_enough")
+
+    families = set()
+    exact_message = False
+    for token in query.split():
+        if token.startswith("-"):
+            raise QuarantineError("gmail_query_not_narrow_enough")
+        match = _BOUND_TERM.fullmatch(token)
+        if match is None:
+            continue
+        operator = match.group("operator").casefold()
+        value = match.group("value")
+        if operator == "label":
+            if (not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value, re.ASCII)
+                    or value.casefold() in _SYSTEM_LABELS):
+                continue
+            families.add("label")
+        elif operator in ("larger", "smaller"):
+            size = _SIZE.fullmatch(value)
+            if size is not None and int(size.group("number")) > 0:
+                multiplier = {
+                    None: 1,
+                    "k": 1024,
+                    "m": 1024 * 1024,
+                    "g": 1024 * 1024 * 1024,
+                }[None if size.group("unit") is None else size.group("unit").casefold()]
+                size_bytes = int(size.group("number")) * multiplier
+            else:
+                size_bytes = 0
+            if operator == "larger" and size_bytes >= MIN_QUARANTINE_SAVINGS_BYTES:
+                families.add("size")
+        elif operator in ("after", "before", "newer", "newer_than", "older", "older_than"):
+            if _DATE_OR_AGE.fullmatch(value) is not None:
+                families.add("time")
+        elif operator == "filename" and value.strip():
+            families.add("filename")
+        elif operator == "rfc822msgid" and value.strip():
+            exact_message = True
+
+    if not exact_message and len(families) < 2:
         raise QuarantineError("gmail_query_not_narrow_enough")
 
 

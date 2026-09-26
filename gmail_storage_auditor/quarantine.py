@@ -19,8 +19,8 @@ QUARANTINE_IDENTITY_SCOPES = frozenset(("openid", "email"))
 LABEL_LIST_FIELDS = "labels(id,name,type)"
 
 
-def _refs(value: object, field: str) -> tuple[str, ...]:
-    if not isinstance(value, tuple) or not value:
+def _refs(value: object, field: str, *, allow_empty: bool = False) -> tuple[str, ...]:
+    if not isinstance(value, tuple) or (not value and not allow_empty):
         raise QuarantineError(f"{field}_required")
     if any(not isinstance(ref, str) or not ref.strip() for ref in value):
         raise QuarantineError(f"{field}_invalid")
@@ -65,7 +65,7 @@ class CandidateSelection:
 
     def __post_init__(self) -> None:
         _refs(self.refs, "candidate_refs")
-        _refs(self.retained_refs, "retained_refs")
+        _refs(self.retained_refs, "retained_refs", allow_empty=True)
         if set(self.refs) & set(self.retained_refs):
             raise QuarantineError("candidate_conflicts_with_retained_copy")
         for value, field in (

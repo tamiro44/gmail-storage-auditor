@@ -19,9 +19,11 @@ requires separate design, review, credentials, and fresh explicit approval.
 
 An action requires all of the following immutable records and runtime state:
 
-- A `CandidateSelection` containing exact opaque candidate references, at least
-  one distinct retained-copy reference, the active policy version, and a
-  selection revision. Candidate and retained references cannot overlap.
+- A `CandidateSelection` containing exact opaque candidate references, every
+  applicable retained-copy reference, the active policy version, and a selection
+  revision. Candidate and retained references cannot overlap. The retained set
+  may be empty when the candidates have no duplicate relationship; quarantine
+  does not require deletion-grade duplicate evidence.
 - A `QuarantineApproval` for the exact `apply_quarentine_label` action and an
   exact nonempty subset of that selection.
 - The same active selection and interaction reference at the final adapter
@@ -43,7 +45,7 @@ through the adapter's private mapping before the first mutation.
 | --- | --- |
 | Missing, malformed, wrong-action, or prior-interaction approval | Deny before provider calls. |
 | Selection, policy, revision, or retained-copy set changed after approval | Deny; recompute and request fresh approval. |
-| Empty retained-copy set or a candidate also selected as retained | Deny construction of the selection. |
+| A candidate is also selected as a retained copy | Deny construction of the selection. |
 | Scheduled or recurring audit attempts an action | Deny before provider calls; produce reports only. |
 | Missing or ambiguous `quarentine` label | Deny without creating a label or modifying a message. |
 | Approved reference cannot be privately resolved | Deny the whole selection before the first mutation. |

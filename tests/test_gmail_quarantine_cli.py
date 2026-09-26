@@ -121,28 +121,88 @@ class GmailQuarantineCliTests(unittest.TestCase):
         self.assertIn("existing `quarentine` label", confirmation_prompt)
         self.assertIn("does not delete messages or recover storage", confirmation_prompt)
 
-    def test_only_bounded_non_high_high_savings_review_is_eligible(self):
+    def test_review_queue_does_not_require_duplicate_evidence(self):
+        message = Message("standalone-review", MIN_QUARANTINE_SAVINGS_BYTES, AS_OF)
+        inventory = Inventory(
+            Scope("standalone", synthetic=True), AS_OF, (message,), True, None, 1
+        )
+        duplicates = analyze_duplicates(inventory)
+        classifications = classify_risk(inventory, duplicates)
+        plan = score_cleanup(duplicates, classifications)
+        selection = _candidate_selection(plan, classifications, 1)
+        self.assertEqual(selection.refs, ("standalone-review",))
+        self.assertEqual(selection.retained_refs, ())
+
+    def test_high_risk_keep_unknown_size_and_retained_copy_are_blocked(self):
         plan = plan_fixture()
-        selection = _candidate_selection(plan, 1)
+        classifications = classify_risk(plan.duplicates.inventory, plan.duplicates)
+        selection = _candidate_selection(plan, classifications, 1)
         self.assertEqual(selection.refs, ("message-000002",))
         self.assertEqual(MIN_QUARANTINE_SAVINGS_BYTES, 10 * 1024 * 1024)
 
         for changes in (
-            {"risk_tier": "high"},
+            {"risk": "high"},
             {"recommendation": "keep"},
-            {"estimated_savings_bytes": MIN_QUARANTINE_SAVINGS_BYTES - 1},
-            {"estimated_savings_bytes": None},
         ):
             with self.subTest(changes=changes):
-                candidates = tuple(
-                    replace(candidate, **changes)
-                    if candidate.message_ref == "message-000002" else candidate
-                    for candidate in plan.candidates
+                changed = tuple(
+                    replace(item, **changes)
+                    if item.message_ref == "message-000002" else item
+                    for item in classifications
                 )
                 with self.assertRaisesRegex(
                     QuarantineError, "no_eligible_recommended_candidates"
                 ):
-                    _candidate_selection(replace(plan, candidates=candidates), 1)
+                    _candidate_selection(plan, changed, 1)
+
+        original_only = _candidate_selection(plan, classifications, 10)
+        self.assertNotIn("message-000001", original_only.refs)
+
+        for category in ("medical", "sentimental_media"):
+            with self.subTest(category=category):
+                protected_message = Message(
+                    f"{category}-message",
+                    MIN_QUARANTINE_SAVINGS_BYTES,
+                    AS_OF,
+                    hints=(Hint(category, "synthetic fixture"),),
+                )
+                protected_inventory = Inventory(
+                    Scope("protected", synthetic=True),
+                    AS_OF,
+                    (protected_message,),
+                    True,
+                    None,
+                    1,
+                )
+                protected_duplicates = analyze_duplicates(protected_inventory)
+                protected_classifications = classify_risk(
+                    protected_inventory, protected_duplicates
+                )
+                protected_plan = score_cleanup(
+                    protected_duplicates, protected_classifications
+                )
+                with self.assertRaisesRegex(
+                    QuarantineError, "no_eligible_recommended_candidates"
+                ):
+                    _candidate_selection(
+                        protected_plan, protected_classifications, 1
+                    )
+
+        unknown_inventory = replace(
+            plan.duplicates.inventory,
+            messages=tuple(
+                replace(message, size_estimate_bytes=None)
+                if message.ref == "message-000002" else message
+                for message in plan.duplicates.inventory.messages
+            ),
+        )
+        unknown_duplicates = analyze_duplicates(unknown_inventory)
+        unknown_classifications = classify_risk(unknown_inventory, unknown_duplicates)
+        unknown_plan = score_cleanup(unknown_duplicates, unknown_classifications)
+        with self.assertRaisesRegex(
+            QuarantineError, "no_eligible_recommended_candidates"
+        ):
+            _candidate_selection(unknown_plan, unknown_classifications, 1)
 
     def test_cancel_eof_empty_unknown_or_wrong_confirmation_never_loads_modify_credentials(self):
         plan = plan_fixture()

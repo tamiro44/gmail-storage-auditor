@@ -29,7 +29,7 @@ from .quarantine import (
     render_quarantine_result,
     validate_quarantine_scopes,
 )
-from .risk import classify_risk
+from .risk import RiskClassification, classify_risk
 from .scoring import CleanupPlan, score_cleanup
 
 
@@ -174,26 +174,31 @@ def verify_same_account(*, readonly_credentials: Any, modify_credentials: Any) -
         raise QuarantineError("gmail_account_mismatch")
 
 
-def _candidate_selection(plan: CleanupPlan, limit: int) -> CandidateSelection:
-    source_supported_copies = {
-        ref
-        for cluster in plan.duplicates.clusters
-        if cluster.authority == "source_supported"
-        for ref in cluster.members
-        if ref != cluster.retained_ref
-    }
+def _candidate_selection(
+    plan: CleanupPlan,
+    classifications: tuple[RiskClassification, ...],
+    limit: int,
+) -> CandidateSelection:
+    inventory = plan.duplicates.inventory
+    if not inventory.complete:
+        raise QuarantineError("bounded_inventory_incomplete")
+    messages = {message.ref: message for message in inventory.messages}
+    risks = {item.message_ref: item for item in classifications}
+    if set(risks) != set(messages) or len(risks) != len(classifications):
+        raise QuarantineError("quarantine_classification_mismatch")
+    retained = tuple(sorted(plan.duplicates.retained_refs))
     eligible = tuple(
-        candidate.message_ref for candidate in plan.candidates
-        if candidate.recommendation == "review"
-        and candidate.risk_tier == "unknown"
-        and candidate.message_ref in source_supported_copies
-        and candidate.estimated_savings_bytes is not None
-        and candidate.estimated_savings_bytes >= MIN_QUARANTINE_SAVINGS_BYTES
-        and candidate.retained_copy_refs
+        risk.message_ref for risk in classifications
+        if risk.recommendation == "review"
+        and risk.risk != "high"
+        and "classification_uncertain" not in risk.categories
+        and risk.message_ref not in retained
+        and messages[risk.message_ref].size_estimate_bytes is not None
+        and messages[risk.message_ref].size_estimate_bytes
+            >= MIN_QUARANTINE_SAVINGS_BYTES
     )[:limit]
     if not eligible:
         raise QuarantineError("no_eligible_recommended_candidates")
-    retained = tuple(sorted(plan.duplicates.retained_refs))
     return CandidateSelection(
         eligible, retained, plan.policy_version,
         "selection-" + secrets.token_hex(8),
@@ -229,9 +234,10 @@ def run_workflow(
     if not inventory.complete:
         raise QuarantineError("gmail_query_exceeded_bounded_scan_narrow_query")
     duplicates = analyze_duplicates(inventory)
-    plan = score_cleanup(duplicates, classify_risk(inventory, duplicates))
+    classifications = classify_risk(inventory, duplicates)
+    plan = score_cleanup(duplicates, classifications)
     print(render_cleanup_report(plan), end="")
-    candidates = _candidate_selection(plan, args.candidate_limit)
+    candidates = _candidate_selection(plan, classifications, args.candidate_limit)
     print("Eligible quarantine candidates: " + ", ".join(candidates.refs))
     selected = _read_selection(prompt, candidates)
     confirmation = prompt(

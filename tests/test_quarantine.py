@@ -161,9 +161,11 @@ class QuarantineSafetyTests(unittest.TestCase):
         self.assertNotIn("provider-b", report)
         self.assertNotIn("synthetic provider detail", report)
 
-    def test_changed_selection_and_empty_retained_set_fail_before_provider_calls(self):
-        with self.assertRaisesRegex(QuarantineError, "retained_refs_required"):
-            CandidateSelection(("message-000001",), (), "0.1", "selection-1")
+    def test_changed_selection_and_retained_copy_conflict_fail_before_provider_calls(self):
+        self.assertEqual(
+            CandidateSelection(("message-000001",), (), "0.1", "selection-1").retained_refs,
+            (),
+        )
         with self.assertRaisesRegex(QuarantineError, "candidate_conflicts_with_retained_copy"):
             CandidateSelection(
                 ("message-000001",), ("message-000001",), "0.1", "selection-1"

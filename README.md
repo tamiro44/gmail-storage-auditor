@@ -165,11 +165,12 @@ The normal `gmail_cli` command remains read-only. Quarantine is a separate,
 interactive command with deliberately small hard limits: at most three Gmail
 pages and ten displayed candidates. It first completes the bounded read-only
 inventory and prints the full cleanup recommendation report. Quarantine is a
-reversible human-review queue, not a deletion recommendation. Only Review
-candidates with non-high risk, source-supported retained-copy evidence, known
-estimated savings of at least 10 MiB, and a retained copy are offered. Protected,
-sentimental, and all other high-risk items remain blocked, as do Keep,
-unknown-size, unresolved-duplicate, and retained-copy messages. An incomplete scan or a run
+reversible human-review queue, not a deletion recommendation. Review candidates
+with non-high risk and known estimated savings of at least 10 MiB are offered;
+duplicate evidence is not required. Protected, sentimental, and all other
+high-risk items remain blocked, as do Keep, unknown-size, and retained-copy
+messages. When duplicate evidence exists, its retained copy remains excluded.
+An incomplete scan or a run
 with no eligible candidates stops without loading modify credentials. The page
 limit is only a safety ceiling: it never makes a partial inventory actionable.
 If the query reaches that ceiling, the command reports
@@ -223,7 +224,7 @@ The smoke test above is a human-only procedure and is not run by tests or CI.
 Quarantine is reversible human-review state, not deletion authorization. It does not delete, trash, archive, or recover storage. A future deletion workflow must require presence in `quarentine` as a necessary condition and must still obtain its own fresh, explicit authorization; this feature implements no deletion path. Automated tests use fabricated calls and request spies only. Any real-account smoke test must be explicitly user-initiated and limited to a controlled test message.
 
 The final action boundary also requires the exact active policy selection, a
-nonempty disjoint retained-copy set, the current interaction, interactive audit
+disjoint retained-copy set when applicable, the current interaction, interactive audit
 mode, and a one-shot approval. Scheduled or recurring audits are always
 report-only. See `docs/safety.md` for the threat and failure model.
 

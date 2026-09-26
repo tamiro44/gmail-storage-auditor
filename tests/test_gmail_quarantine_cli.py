@@ -1,6 +1,7 @@
 """Synthetic regression tests for the human-controlled quarantine CLI."""
 
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from dataclasses import replace
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
@@ -55,7 +56,7 @@ class GmailQuarantineCliTests(unittest.TestCase):
     def args(self, directory):
         base = Path(directory)
         values = [
-            "--query", "larger:10M older:1y", "--max-pages", "1",
+            "--query", "label:gsa-quarantine-smoke larger:10M", "--max-pages", "1",
             "--candidate-limit", "2", "--client-secrets", str(base / "read-client.json"),
             "--token", str(base / "read-token.json"),
             "--modify-client-secrets", str(base / "modify-client.json"),
@@ -65,7 +66,7 @@ class GmailQuarantineCliTests(unittest.TestCase):
 
     def reader(self):
         reader = GmailReader(
-            query="larger:10M older:1y", list_messages=lambda **_: {},
+            query="label:gsa-quarantine-smoke larger:10M", list_messages=lambda **_: {},
             get_message=lambda **_: {}, granted_scopes=(GMAIL_READONLY_SCOPE,),
         )
         reader._message_refs = {
@@ -165,6 +166,28 @@ class GmailQuarantineCliTests(unittest.TestCase):
                     self.assertIn(reason, stderr.getvalue())
             workflow.assert_not_called()
 
+        with patch("gmail_storage_auditor.gmail_quarantine_cli.run_workflow") as workflow:
+            for query in (
+                "larger:10M older:1y",
+                "label:inbox larger:10M",
+                "label:gsa-quarantine-smoke",
+                "label:gsa-quarantine-smoke {larger:1M smaller:2M}",
+            ):
+                with self.subTest(query=query), tempfile.TemporaryDirectory() as directory:
+                    argv = vars(self.args(directory))
+                    argv["query"] = query
+                    command = []
+                    for key, item in argv.items():
+                        command.extend(("--" + key.replace("_", "-"), str(item)))
+                    stderr = StringIO()
+                    with redirect_stderr(stderr):
+                        self.assertEqual(main(command), 2)
+                    self.assertEqual(
+                        stderr.getvalue(),
+                        "Gmail quarantine failed: gmail_query_not_narrow_enough\n",
+                    )
+            workflow.assert_not_called()
+
         with tempfile.TemporaryDirectory() as directory:
             args = self.args(directory)
             args.modify_token = args.token
@@ -172,6 +195,40 @@ class GmailQuarantineCliTests(unittest.TestCase):
                 with self.assertRaisesRegex(GmailConnectorError, "credential_paths_must_be_distinct"):
                     run_workflow(args, now=lambda: AS_OF)
                 load.assert_not_called()
+
+    def test_incomplete_inventory_requires_narrower_query_before_selection(self):
+        plan = plan_fixture()
+        incomplete = replace(
+            plan.duplicates.inventory, complete=False, partial_reason="page_limit"
+        )
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            stack.enter_context(patch(
+                "gmail_storage_auditor.gmail_quarantine_cli.load_credentials",
+                return_value=object(),
+            ))
+            stack.enter_context(patch(
+                "gmail_storage_auditor.gmail_quarantine_cli.build_google_reader",
+                return_value=self.reader(),
+            ))
+            stack.enter_context(patch(
+                "gmail_storage_auditor.gmail_quarantine_cli.collect_inventory",
+                return_value=incomplete,
+            ))
+            modify = stack.enter_context(patch(
+                "gmail_storage_auditor.gmail_quarantine_cli.load_modify_credentials"
+            ))
+            adapter = stack.enter_context(patch(
+                "gmail_storage_auditor.gmail_quarantine_cli.build_google_quarantine_adapter"
+            ))
+            prompt = Mock(side_effect=AssertionError("selection must not be requested"))
+            with self.assertRaisesRegex(
+                QuarantineError,
+                "gmail_query_exceeded_bounded_scan_narrow_query",
+            ):
+                run_workflow(self.args(directory), prompt=prompt, now=lambda: AS_OF)
+            prompt.assert_not_called()
+            modify.assert_not_called()
+            adapter.assert_not_called()
 
     def test_default_readonly_cli_does_not_import_quarantine_workflow(self):
         source = (Path(__file__).resolve().parents[1] / "gmail_storage_auditor" / "gmail_cli.py").read_text(encoding="utf-8")

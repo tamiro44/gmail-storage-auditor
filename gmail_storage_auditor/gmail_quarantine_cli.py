@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sys
 from typing import Any
@@ -35,6 +36,15 @@ from .scoring import CleanupPlan, score_cleanup
 MAX_QUARANTINE_PAGES = 3
 MAX_QUARANTINE_CANDIDATES = 10
 CONFIRMATION_TEXT = "APPLY QUARENTINE LABEL"
+_BROAD_LABELS = frozenset((
+    "all", "all_mail", "anywhere", "inbox", "sent", "spam", "starred",
+    "trash", "unread",
+))
+_SECONDARY_BOUND = re.compile(
+    r"(?:^|\s)(?:after|before|filename|larger|newer|newer_than|older|"
+    r"older_than|rfc822msgid|smaller):[^\s]+",
+    flags=re.ASCII | re.IGNORECASE,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -61,6 +71,22 @@ def _validate_credential_paths(args: argparse.Namespace) -> None:
     )
     if len(set(paths)) != len(paths):
         raise GmailConnectorError("credential_paths_must_be_distinct")
+
+
+def _validate_bounded_query(query: object) -> None:
+    """Require a dedicated label plus another narrowing predicate."""
+    if not isinstance(query, str) or not query.strip():
+        raise QuarantineError("gmail_query_required")
+    labels = re.findall(
+        r"(?:^|\s)label:([A-Za-z0-9_-]{1,64})(?=\s|$)", query,
+        flags=re.ASCII | re.IGNORECASE,
+    )
+    custom_labels = tuple(
+        label for label in labels if label.casefold() not in _BROAD_LABELS
+    )
+    if (not custom_labels or _SECONDARY_BOUND.search(query) is None
+            or any(character in query for character in "\r\n{}")):
+        raise QuarantineError("gmail_query_not_narrow_enough")
 
 
 def _token_scopes(path: Path) -> tuple[str, ...]:
@@ -176,6 +202,7 @@ def run_workflow(
     now: Callable[[], datetime] | None = None,
 ) -> int:
     """Run one interaction; dependencies remain patchable for synthetic tests."""
+    _validate_bounded_query(args.query)
     _validate_credential_paths(args)
     readonly_credentials = load_credentials(
         client_secrets_path=args.client_secrets, token_path=args.token
@@ -187,7 +214,7 @@ def run_workflow(
         max_pages=args.max_pages,
     )
     if not inventory.complete:
-        raise QuarantineError("bounded_inventory_incomplete")
+        raise QuarantineError("gmail_query_exceeded_bounded_scan_narrow_query")
     duplicates = analyze_duplicates(inventory)
     plan = score_cleanup(duplicates, classify_risk(inventory, duplicates))
     print(render_cleanup_report(plan), end="")
@@ -230,8 +257,10 @@ def run_workflow(
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if not args.query.strip():
-        print("Gmail quarantine failed: gmail_query_required", file=sys.stderr)
+    try:
+        _validate_bounded_query(args.query)
+    except QuarantineError as error:
+        print(f"Gmail quarantine failed: {error}", file=sys.stderr)
         return 2
     if not 1 <= args.max_pages <= MAX_QUARANTINE_PAGES:
         print("Gmail quarantine failed: gmail_page_limit_not_small", file=sys.stderr)

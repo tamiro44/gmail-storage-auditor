@@ -235,6 +235,21 @@ is treated as the most conservative ranking state. This affects ordering only:
 both remain constrained to Review or Keep, and size or score cannot override the
 retained-copy and protection gates.
 
+## Advisory calibration and retrospective loop (GSA-007)
+
+`evaluate_calibration(...)` compares versioned synthetic expectations with actual
+recommendations and produces immutable observed signals, separate policy
+judgments, limitations, and optional review-required proposals. It measures
+recommendation drift, false Safe results, missed protection, retained-copy
+violations, confidence drift, possible size dominance, and recurring synthetic
+rejection patterns. `render_calibration_report(report)` returns a concise,
+deterministic Markdown report without I/O.
+
+The retro runs only at a meaningful synthetic milestone, a policy-version change,
+or a fixture-suite change. It cannot modify policy or invoke mailbox actions.
+Real feedback remains disabled in v0.1, and proposals must preserve or strengthen
+safety and include rationale plus regression tests. See `docs/calibration.md`.
+
 ## Repository structure
 
 - `SKILL.md` — reusable agent/skill workflow
@@ -245,6 +260,7 @@ retained-copy and protection gates.
 - `requirements-gmail.txt` — optional bounded dependencies for the read-only Gmail connector
 - `tests/` — synthetic inventory and boundary tests
 - `docs/safety.md` — enforced safety gates, approval contract, and failure model
+- `docs/calibration.md` — retrospective triggers, signals, privacy, and review loop
 - `docs/agent-board.md` — planned board/workflow documentation
 
 ## Status

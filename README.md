@@ -157,7 +157,51 @@ stage performs no network access and has no mailbox action capability.
 
 The narrow adapter first looks up the existing label and fails closed if it is absent; it never creates a label. For each approved message it calls only message-level label modification with `quarentine` in the add list and an empty remove list. It cannot trash, delete, archive, change read/unread state, mutate a thread, or remove existing labels. Each message is attempted at most once. Partial failures are reported with fixed reasons and opaque references only, without provider IDs or raw provider errors.
 
-This optional action requires a distinct credential containing exactly one Gmail API scope: the minimum message-label mutation scope, `https://www.googleapis.com/auth/gmail.modify`. The only additional OAuth scopes permitted by the quarantine adapter are the OpenID Connect identity scopes `openid` and `email`, and only to bind an action to the authenticated account; no other non-Gmail scopes are accepted. The existing inventory credential remains strictly `gmail.readonly`; the read-only CLI does not request or accept the modify scope. Creating an interactive quarantine CLI and its credential lifecycle requires separate security review; this issue exposes the guarded adapter API without silently upgrading existing tokens.
+This optional action requires a distinct credential containing exactly one Gmail API scope: the minimum message-label mutation scope, `https://www.googleapis.com/auth/gmail.modify`. The only additional OAuth scopes permitted by the quarantine adapter are the OpenID Connect identity scopes `openid` and `email`, and only to bind an action to the authenticated account; no other non-Gmail scopes are accepted. The existing inventory credential remains strictly `gmail.readonly`; the read-only CLI does not request or accept the modify scope. The separately reviewed interactive workflow below uses the guarded adapter without silently upgrading existing tokens.
+
+## Human-controlled Gmail quarantine command (GSA-017)
+
+The normal `gmail_cli` command remains read-only. Quarantine is a separate,
+interactive command with deliberately small hard limits: at most three Gmail
+pages and ten displayed candidates. It first completes the bounded read-only
+inventory and prints the full cleanup recommendation report. Only candidates
+recommended as Safe, Review, or Aggressive by that exact policy run are offered;
+Keep and retained-copy messages cannot be selected. An incomplete scan or a run
+with no eligible candidates stops without loading modify credentials.
+
+Prepare a second desktop OAuth client/token location outside the checkout. It
+must be distinct from both read-only paths; the command requests only
+`gmail.modify` for that token and never upgrades or reuses the read-only token.
+Create the Gmail label named exactly `quarentine` yourself before the run. The
+command will not create it.
+
+For an explicitly authorized, private smoke test, use a narrowly bounded query
+and one candidate:
+
+```powershell
+python -B -m gmail_storage_auditor.gmail_quarantine_cli --query "larger:10M older:1y" --max-pages 1 --candidate-limit 1 --client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\readonly-client.json" --token "$env:LOCALAPPDATA\gmail-storage-auditor\readonly-token.json" --modify-client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\modify-client.json" --modify-token "$env:LOCALAPPDATA\gmail-storage-auditor\modify-token.json"
+```
+
+Human steps:
+
+1. Confirm all four paths are outside this repository and pairwise distinct,
+   and verify the existing modify token is scoped only to `gmail.modify`.
+2. Read the complete recommendation report before responding. If the scan is
+   partial or no eligible recommendation is present, stop; do not broaden the
+   query or policy merely to force a candidate.
+3. At `Select candidate references`, type one displayed opaque
+   `message-......` reference. Empty, duplicate, Keep, retained, or unknown
+   references are rejected.
+4. Re-check that exact message privately in Gmail. To proceed, type the exact
+   phrase `APPLY QUARENTINE LABEL` at the next prompt. Any other input, Ctrl+C,
+   or EOF cancels without requesting a Gmail mutation.
+5. Review the opaque per-message result and then inspect the existing
+   `quarentine` label in Gmail. This action only adds that label. It does not
+   delete, Trash, archive, mark read/unread, remove labels, mutate a thread, or
+   recover storage.
+
+Do not paste real report output into repository files, logs, issues, or chat.
+The smoke test above is a human-only procedure and is not run by tests or CI.
 
 Quarantine is reversible human-review state, not deletion authorization. It does not delete, trash, archive, or recover storage. A future deletion workflow must require presence in `quarentine` as a necessary condition and must still obtain its own fresh, explicit authorization; this feature implements no deletion path. Automated tests use fabricated calls and request spies only. Any real-account smoke test must be explicitly user-initiated and limited to a controlled test message.
 

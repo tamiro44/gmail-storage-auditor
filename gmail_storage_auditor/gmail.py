@@ -207,7 +207,7 @@ def _nonnegative_integer(value: Any, field: str) -> int | None:
 
 def _gmail_review_url(message_id: str) -> str | None:
     """Build a non-API Gmail web route only for a narrow, inert ID shape."""
-    if re.fullmatch(r"[0-9a-f]{8,64}", message_id, flags=re.ASCII | re.IGNORECASE) is None:
+    if re.fullmatch(r"[0-9a-f]{16,64}", message_id, flags=re.ASCII) is None:
         return None
     return GMAIL_REVIEW_URL_PREFIX + message_id
 

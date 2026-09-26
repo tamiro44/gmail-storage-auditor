@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -142,11 +143,22 @@ class HtmlReportTests(unittest.TestCase):
         report = render_html(inventory, review_urls={"original": "https://example.invalid/abcd1234"})
         self.assertNotIn("Open in Gmail", report)
 
+        for unsafe in (
+            "https://mail.google.com/mail/#all/abcd1234",
+            "https://mail.google.com/mail/#all/18ABCDEF01234567",
+            "https://mail.google.com/mail/#all/18abcdef01234567/extra",
+        ):
+            with self.subTest(unsafe=unsafe):
+                self.assertNotIn(
+                    "Open in Gmail",
+                    render_html(inventory, review_urls={"original": unsafe}),
+                )
+
 
 class HtmlCliTests(unittest.TestCase):
-    def run_cli(self, extras):
+    def run_cli(self, extras, *, reader=None):
         stdout, stderr = StringIO(), StringIO()
-        with patch.object(gmail_cli, "load_credentials", return_value=object()), patch.object(gmail_cli, "build_google_reader", return_value=object()), patch.object(gmail_cli, "collect_inventory", return_value=examples()["partial_inventory"]), redirect_stdout(stdout), redirect_stderr(stderr), patch("socket.socket", side_effect=AssertionError("network")):
+        with patch.object(gmail_cli, "load_credentials", return_value=object()), patch.object(gmail_cli, "build_google_reader", return_value=reader or object()), patch.object(gmail_cli, "collect_inventory", return_value=examples()["partial_inventory"]), redirect_stdout(stdout), redirect_stderr(stderr), patch("socket.socket", side_effect=AssertionError("network")):
             status = gmail_cli.main(["--query", "synthetic", "--max-pages", "1", "--client-secrets", "unused", "--token", "unused", *extras])
         return status, stdout.getvalue(), stderr.getvalue()
 
@@ -161,6 +173,32 @@ class HtmlCliTests(unittest.TestCase):
                 self.assertEqual(list(Path(directory).iterdir()), [target])
                 result = examples()["duplicates" if duplicate_args else "partial_inventory"]
                 self.assertEqual(target.read_bytes(), render_html(result).encode("utf-8"))
+
+    def test_review_links_require_explicit_html_opt_in(self):
+        review_url = "https://mail.google.com/mail/#all/18abcdef01234567"
+        reader = SimpleNamespace(review_urls={"original": review_url})
+        with TemporaryDirectory() as directory:
+            default_target = Path(directory) / "default.html"
+            opted_in_target = Path(directory) / "opted-in.html"
+
+            default = self.run_cli(["--html", str(default_target)], reader=reader)
+            opted_in = self.run_cli([
+                "--html", str(opted_in_target), "--gmail-review-links",
+            ], reader=reader)
+
+            self.assertEqual(default[0], 0)
+            self.assertNotIn("Open in Gmail", default_target.read_text(encoding="utf-8"))
+            opted_in_html = opted_in_target.read_text(encoding="utf-8")
+            self.assertEqual(opted_in[0], 0)
+            self.assertIn("Open in Gmail", opted_in_html)
+            self.assertIn(review_url, opted_in_html)
+            self.assertNotIn("18abcdef01234567", opted_in[1] + opted_in[2])
+
+        status, _, stderr = self.run_cli(["--gmail-review-links"], reader=reader)
+        self.assertEqual(status, 2)
+        self.assertEqual(
+            stderr, "Gmail inventory failed: gmail_review_links_require_html\n"
+        )
 
     def test_bad_paths_fail_before_authentication_and_do_not_overwrite(self):
         with TemporaryDirectory() as directory:

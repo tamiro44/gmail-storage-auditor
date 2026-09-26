@@ -178,7 +178,14 @@ Open the resulting file directly in a browser. It includes summary metrics, cove
 
 The file contains inline CSS, no JavaScript, no external resources, and a restrictive content security policy. All supplied text is HTML-escaped. Rendering makes no network calls and adds no server, browser launch, cache, or auxiliary files. The Gmail CLI still uses its existing read-only discovery and authentication flow; HTML export adds no Gmail operations or changes to analysis.
 
-When the Gmail connector can safely form a review route from an already returned hexadecimal message ID, the HTML inventory shows an **Open in Gmail** link beside the message's opaque run-local reference. The raw provider ID is never used as visible link text. Invalid or unavailable IDs produce no link. Review URLs are held separately from `Inventory` and `DuplicateAnalysis`, are used only by the HTML presentation, and trigger no additional Gmail request. Opening a link is an explicit browser action by the user and does not authorize or perform a mailbox change.
+Append `--gmail-review-links` with `--html` to explicitly include **Open in
+Gmail** links beside opaque run-local message references. They are omitted by
+default. The connector forms a route only from an already returned, conservatively
+validated hexadecimal message ID; invalid or unavailable IDs produce no link.
+The raw provider ID is never visible link text. Review URLs remain separate from
+`Inventory` and `DuplicateAnalysis`, are used only by the local HTML presentation,
+and trigger no additional Gmail request. Opening one is a human browser action; it
+does not authorize or perform a mailbox mutation.
 
 The destination must be a new file in an existing directory outside the checkout, consistent with the repository privacy rule. Existing files are never overwritten. Errors use fixed diagnostics without exposing output paths. A disk/write failure may leave an incomplete file at the requested destination; no temporary report file is created. Real reports can contain private filenames and observations and must not be committed or shared in logs.
 

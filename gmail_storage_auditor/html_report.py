@@ -14,8 +14,8 @@ def _text(value: object) -> str:
 
 def _review_link(value: object) -> str:
     if not isinstance(value, str) or re.fullmatch(
-        r"https://mail\.google\.com/mail/#all/[0-9a-f]{8,64}", value,
-        flags=re.ASCII | re.IGNORECASE,
+        r"https://mail\.google\.com/mail/#all/[0-9a-f]{16,64}", value,
+        flags=re.ASCII,
     ) is None:
         return ""
     return (

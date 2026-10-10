@@ -177,10 +177,11 @@ If the query reaches that ceiling, the command reports
 `gmail_query_exceeded_bounded_scan_narrow_query` and requires a narrower query.
 
 To reject obviously broad mutation scopes before authentication, the query must
-contain a dedicated non-system `label:` and a second narrowing predicate such as
-`larger:`, `after:`, or `rfc822msgid:`. Create and populate that dedicated label
-manually with only the tiny set intended for this interaction; the command never
-creates or expands labels or queries.
+contain at least two positive narrowing predicate families, such as a size bound
+and an age bound. A dedicated label is optional. Empty, single-clause, negated,
+grouped, and OR-style queries fail closed. An exact `rfc822msgid:` lookup is also
+accepted because it identifies one message. These checks do not make a partial
+scan actionable: the entire bounded query must still fit within the page ceiling.
 
 Prepare a second desktop OAuth client/token location outside the checkout. It
 must be distinct from both read-only paths; the command requests only
@@ -191,19 +192,17 @@ are never printed or retained.
 Create the Gmail label named exactly `quarentine` yourself before the run. The
 command will not create it.
 
-For an explicitly authorized, private smoke test, use a narrowly bounded query
-and one candidate:
+For an explicitly authorized real-mailbox run, use a narrowly bounded query and
+no more than ten candidates:
 
 ```powershell
-python -B -m gmail_storage_auditor.gmail_quarantine_cli --query "label:gsa-quarantine-smoke larger:10M" --max-pages 1 --candidate-limit 1 --client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\readonly-client.json" --token "$env:LOCALAPPDATA\gmail-storage-auditor\readonly-token.json" --modify-client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\modify-client.json" --modify-token "$env:LOCALAPPDATA\gmail-storage-auditor\modify-token.json"
+python -B -m gmail_storage_auditor.gmail_quarantine_cli --query "larger:10M older:1y" --max-pages 3 --candidate-limit 10 --client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\readonly-client.json" --token "$env:LOCALAPPDATA\gmail-storage-auditor\readonly-token.json" --modify-client-secrets "$env:LOCALAPPDATA\gmail-storage-auditor\modify-client.json" --modify-token "$env:LOCALAPPDATA\gmail-storage-auditor\modify-token.json"
 ```
 
 Human steps:
 
 1. Confirm all four paths are outside this repository and pairwise distinct,
-   and verify the existing modify token is scoped only to `gmail.modify`. Create
-   `gsa-quarantine-smoke` manually and apply it only to the small controlled set
-   you intend to audit.
+   and verify the existing modify token is scoped only to `gmail.modify`.
 2. Read the complete recommendation report before responding. If the scan is
    partial or no eligible recommendation is present, stop; do not broaden the
    query or policy merely to force a candidate.
